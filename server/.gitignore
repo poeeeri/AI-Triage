@@ -1,0 +1,76 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual environment ---
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# --- Byte-compiled / optimized / DLL files ---
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+
+# --- FastAPI / Uvicorn logs ---
+*.log
+*.pid
+*.pid.lock
+
+# --- Environment variables ---
+.env
+.env.*
+*.env.local
+
+# --- IDE / editors ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# --- System files ---
+.DS_Store
+Thumbs.db
+
+# --- Testing / coverage ---
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+pytest_cache/
+.cache/
+
+# --- Build / packaging ---
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Jupyter / notebooks ---
+.ipynb_checkpoints
+*.ipynb
+
+# --- Temporary / backup files ---
+*.bak
+*.tmp
+*.swp
+*.swo
+
+# --- Project-specific ---
+# Exclude local SQLite DBs or runtime data if any
+*.db
+*.sqlite3
+/data/
+*.jsonl
+
+# --- Node / frontend (если есть React/Vite-клиент) ---
+node_modules/
+dist/
+*.lock
+test.py
