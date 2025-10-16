@@ -1,7 +1,8 @@
 import os
 from dotenv import load_dotenv
 from typing import Optional, Literal, List, Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import httpx
 
@@ -15,8 +16,18 @@ MAX_TOKENS = int(os.getenv("MAX_TOKENS"))
 
 YANDEX_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 
+# создаем экземпляр фастапи приложения
 app = FastAPI(title="AI-Triage MVP (FastAPI + YandexGPT)")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex="http://localhost:5173",
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+# описываем модели
 class Vitals(BaseModel):
     bp: Optional[str] = Field(None, description="АД, например '180/110'")
     hr: Optional[str] = Field(None, description="ЧСС")
@@ -39,7 +50,7 @@ class TriageOutput(BaseModel):
     priority: Literal["критично срочно","срочно","планово"]
     reason: str
     hint_for_doctor: Optional[str] = None
-    profile: Literal["therapy","surgery","pediatrics","trauma","other"] = "therapy"
+    profile: Optional[str] = "therapy"
     confidence: float = Field(..., ge=0, le=1)
     red_flags: List[str]
     sources: Optional[List[SourceRef]] = None
@@ -64,7 +75,7 @@ def _yc_headers() -> Dict[str, str]:
             }
     raise RuntimeError("нет апи ключа")
 
-
+# тело запроса к апи
 def _yc_payload(messages: List[Dict[str, str]],
                 temperature: float = TEMPERATURE,
                 max_tokens: int = MAX_TOKENS,
@@ -89,15 +100,93 @@ def health():
 @app.post("/triage", response_model=TriageOutput)
 async def triage(payload: TriageInput):
     system_msg = (
-        "Ты — медицинский ассистент по ТРИАЖУ. "
-        "На основе жалоб, анамнеза и виталий выдай СТРОГО валидный JSON "
-        "с ключами: priority, reason, hint_for_doctor, profile, confidence, red_flags, sources. "
-        "Только приоритет и причины, без диагнозов. "
-        "Правила приоритета:\n"
-        "- 'критично срочно': угроза жизни/тяжёлые red flags (нарушение дыхания, SpO2<94%, боль за грудиной >10 мин, неврол. дефицит, гипотензия <90, сознание <15, и т.д.).\n"
-        "- 'срочно': потенциально опасно, но без немедленных red flags.\n"
-        "- 'планово': стабильное состояние, без красных флагов.\n"
-        "Поле 'profile' выбери из: therapy, surgery, pediatrics, trauma, other."
+        """
+        СИСТЕМА:
+        Ты — медицинский ассистент по триажу в приёмном отделении. 
+        Твоя задача — по жалобам, анамнезу и витальным показателям классифицировать приоритет осмотра пациента.
+
+        Приоритеты:
+        - "критично срочно" — немедленный осмотр, угроза жизни;
+        - "срочно" — осмотр в ближайшее время, есть риски ухудшения;
+        - "планово" — может подождать, нет признаков неотложности.
+
+        Правила:
+        - Учитывай жалобы, анамнез, витальные показатели.
+        - При ответе всегда опирайся на предоставленный контекст из врачебных протоколов (если есть).
+        - Не ставь диагнозов и не используй предположительные диагнозы.
+        - Ответ должен быть СТРОГО валидным JSON в соответствии со схемой.
+        - Никакого текста вне JSON.
+        - Используй данные из контекста, чтобы заполнить "sources" и "hint_for_doctor".
+
+        Выводи JSON следующего формата:
+        {
+        "priority": "критично срочно | срочно | планово",
+        "reason": "2–3 предложения, почему выбран именно этот приоритет (логика, ключевые факторы, отклонения витальных показателей)",
+        "hint_for_doctor": "Краткие первые шаги, которые врач должен выполнить (например: снять ЭКГ, кислород, анализы и т.п.)",
+        "profile": "therapy | pediatrics | trauma | ... (основной профиль пациента, если известен)",
+        "red_flags": ["краткие пункты ключевых 'красных флагов'"],
+        "sources": [
+            {"id": "doc_cardio_01", "section": "1", "version_date": "2025-05-12"}
+        ],
+        "confidence": 0.0–1.0
+        }
+
+        Пример 1 (критично срочно):
+        ВХОД:
+        боль за грудиной 20 мин, пот; анамнез ИБС; ЧСС 110, АД 180/110, SpO2 92%.
+        ВЫХОД:
+        {
+        "priority": "критично срочно",
+        "reason": "Остро начавшаяся боль за грудиной у пациента с ИБС и снижением SpO₂ до 92% указывает на риск острого коронарного синдрома. Высокое давление и тахикардия усиливают угрозу осложнений.",
+        "hint_for_doctor": "Снять ЭКГ в первые 10 мин, обеспечить кислород при SpO₂ <94%, назначить ASA и нитраты по протоколу, взять тропонин, вызвать кардиолога.",
+        "profile": "therapy",
+        "red_flags": ["боль за грудиной >10 мин", "SpO₂ <94%", "АД ≥180/110"],
+        "sources": [
+            {"id": "doc_cardio_01", "section": "1", "version_date": "2025-05-12"}
+        ],
+        "confidence": 0.9
+        }
+
+        Пример 2 (срочно):
+        ВХОД:
+        лихорадка 38.8, кашель 3 дня; анамнез ХОБЛ; ЧСС 96, АД 130/80, SpO2 95%.
+        ВЫХОД:
+        {
+        "priority": "срочно",
+        "reason": "Повышенная температура и кашель у пациента с ХОБЛ повышают риск дыхательной декомпенсации, хотя SpO₂ пока стабильна. Осмотр необходим в ближайшее время.",
+        "hint_for_doctor": "Оценить дыхание, сатурацию, провести аускультацию, рассмотреть антибиотики при подозрении на обострение ХОБЛ.",
+        "profile": "therapy",
+        "red_flags": ["t° >38.5", "анамнез ХОБЛ"],
+        "sources": [
+            {"id": "doc_resp_02", "section": "2", "version_date": "2024-11-01"}
+        ],
+        "confidence": 0.78
+        }
+
+        Пример 3 (планово):
+        ВХОД:
+        тупая боль в пояснице 2 недели без иррадиации; травм не было; витальные в норме.
+        ВЫХОД:
+        {
+        "priority": "планово",
+        "reason": "Нет признаков неотложности: длительная стабильная боль без неврологических симптомов и с нормальными витальными параметрами.",
+        "hint_for_doctor": "Рекомендовать плановый приём, анализ мочи, при необходимости направление на МРТ или физиотерапию.",
+        "profile": "therapy",
+        "red_flags": [],
+        "sources": [
+            {"id": "doc_backpain_03", "section": "1", "version_date": "2025-02-10"}
+        ],
+        "confidence": 0.72
+        }
+
+        ПОЛЬЗОВАТЕЛЬ:
+        ВХОД:
+        {
+        "complaint": "Сильная давящая боль за грудиной 20 минут, холодный пот.",
+        "history": "Мужчина 58 лет, гипертония, курение 30 лет.",
+        "vitals": { "hr": 104, "bp_syst": 170, "bp_diast": 100, "spo2": 93, "temp": 36.7 }
+        }
+"""
     )
 
     user_msg = (
