@@ -2,7 +2,44 @@ import React, { useState } from 'react';
 import { SectionCard } from '../common/SectionCard.jsx';
 import { inferProfile } from '../../utils/medicalUtils.js';
 import { triageEngine } from '../../utils/triageEngine.js';
-import { nowISO } from '../../utils/constants.js';
+import { nowISO, PRIORITY } from '../../utils/constants.js';
+
+const API_BASE = import.meta?.env?.VITE_API_BASE || "http://127.0.0.1:8000";
+
+function adaptServerTriageToUI(server) {
+  const map = {
+    "критично срочно": PRIORITY.CRIT,
+    "срочно": PRIORITY.URG,
+    "планово": PRIORITY.PLAN,
+  };
+  const p = map[server.priority] || PRIORITY.PLAN;
+
+  const hint = (server.hint_for_doctor || "").trim() || defaultHint(p.key);
+
+  return {
+    priorityKey: p.key,
+    priorityColor: p.color,
+    priorityDot: p.dot,
+    reason: server.reason || "",
+    redFlags: server.red_flags || [],
+    confidence: typeof server.confidence === "number" ? server.confidence : 0.7,
+    hint_for_doctor: hint,
+    sources: server.sources || [],
+  };
+}
+
+async function postTriage(payload) {
+  const res = await fetch(`${API_BASE}/triage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Server ${res.status}: ${text}`);
+  }
+  return res.json();
+}
 
 export function IntakeForm({ onAddPatient }) {
   const [complaint, setComplaint] = useState("");
@@ -15,9 +52,13 @@ export function IntakeForm({ onAddPatient }) {
   const [gcs, setGcs] = useState("");
   const [age, setAge] = useState("");
   const [pregnancy, setPregnancy] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
+    if (isSending) return;
+    setIsSending(true);
+
     const vitals = {
       bp: bp || undefined,
       hr: hr ? Number(hr) : undefined,
@@ -27,32 +68,46 @@ export function IntakeForm({ onAddPatient }) {
       gcs: gcs ? Number(gcs) : undefined,
     };
     const ageNum = age ? Number(age) : undefined;
-    const profile = inferProfile({ complaint, age: ageNum });
+
     const base = {
       id: `ID-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
       createdAt: nowISO(),
-      profile,
       complaint: complaint.trim(),
       history: history.trim(),
       vitals,
       age: ageNum,
       pregnancy,
     };
-    const triage = triageEngine(base);
-    
-    onAddPatient({ ...base, triage });
-    
-    // Reset form
-    setComplaint(""); 
-    setHistory(""); 
-    setBp(""); 
-    setHr(""); 
-    setSpo2(""); 
-    setTemp(""); 
-    setRr(""); 
-    setGcs(""); 
-    setAge(""); 
-    setPregnancy(false);
+
+    try {
+      const serverOut = await postTriage({
+        complaint: base.complaint,
+        history: base.history,
+        vitals: base.vitals,
+      });
+
+      const triage = adaptServerTriageToUI(serverOut);
+      const profile = (serverOut.profile || "therapy").toLowerCase();
+
+      onAddPatient({ ...base, triage, profile });
+    } catch (err) {
+      console.warn("Бэк недоступен, используем локальный триаж:", err);
+
+      const profileGuess = inferProfile({ complaint: base.complaint, age: ageNum });
+      const local = triageEngine(base);
+      const triage = {
+        ...local,
+        hint_for_doctor: local.hint_for_doctor || defaultHint(local.priorityKey),
+      };
+      onAddPatient({ ...base, triage, profile: profileGuess });
+    } finally {
+      setIsSending(false);
+      setComplaint("");
+      setHistory("");
+      setBp(""); setHr(""); setSpo2(""); setTemp(""); setRr(""); setGcs("");
+      setAge("");
+      setPregnancy(false);
+    }
   }
 
   return (
@@ -60,111 +115,47 @@ export function IntakeForm({ onAddPatient }) {
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <label className="text-xs text-slate-500">Жалобы</label>
-          <textarea 
-            value={complaint} 
-            onChange={(e) => setComplaint(e.target.value)} 
-            required 
-            rows={3}
-            placeholder="Напр.: боль за грудиной 20 мин, холодный пот"
-            className="mt-1 w-full rounded-xl border-slate-300 focus:ring-0 focus:outline-none focus:border-slate-500 text-sm p-3" 
+          <textarea
+            value={complaint}
+            onChange={(e) => setComplaint(e.target.value)}
+            className="w-full border rounded-lg px-2 py-1.5"
+            required
           />
         </div>
-        
+
         <div>
-          <label className="text-xs text-slate-500">Анамнез (ключевое)</label>
-          <textarea 
-            value={history} 
-            onChange={(e) => setHistory(e.target.value)} 
-            rows={2}
-            placeholder="Напр.: мужчина 58 лет, гипертония, курение 30 лет"
-            className="mt-1 w-full rounded-xl border-slate-300 focus:border-slate-500 text-sm p-3" 
+          <label className="text-xs text-slate-500">Анамнез</label>
+          <textarea
+            value={history}
+            onChange={(e) => setHistory(e.target.value)}
+            className="w-full border rounded-lg px-2 py-1.5"
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-slate-500">АД (сист/диаст)</label>
-            <input 
-              value={bp} 
-              onChange={(e) => setBp(e.target.value)} 
-              placeholder="120/80" 
-              className="mt-1 w-full rounded-xl border-slate-300 focus:border-slate-500 text-sm p-2.5" 
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500">ЧСС</label>
-            <input 
-              value={hr} 
-              onChange={(e) => setHr(e.target.value)} 
-              placeholder="75" 
-              className="mt-1 w-full rounded-xl border-slate-300 focus:border-slate-500 text-sm p-2.5" 
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500">SpO₂ (%)</label>
-            <input 
-              value={spo2} 
-              onChange={(e) => setSpo2(e.target.value)} 
-              placeholder="98" 
-              className="mt-1 w-full rounded-xl border-slate-300 focus:border-slate-500 text-sm p-2.5" 
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500">Температура (°C)</label>
-            <input 
-              value={temp} 
-              onChange={(e) => setTemp(e.target.value)} 
-              placeholder="36.6" 
-              className="mt-1 w-full rounded-xl border-slate-300 focus:border-slate-500 text-sm p-2.5" 
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500">ЧДД</label>
-            <input 
-              value={rr} 
-              onChange={(e) => setRr(e.target.value)} 
-              placeholder="16" 
-              className="mt-1 w-full rounded-xl border-slate-300 focus:border-slate-500 text-sm p-2.5" 
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500">GCS</label>
-            <input 
-              value={gcs} 
-              onChange={(e) => setGcs(e.target.value)} 
-              placeholder="15" 
-              className="mt-1 w-full rounded-xl border-slate-300 focus:border-slate-500 text-sm p-2.5" 
-            />
-          </div>
+        <div className="grid grid-cols-2 gap-2">
+          <input className="border rounded-lg px-2 py-1.5" placeholder="АД (напр. 120/80)" value={bp} onChange={(e)=>setBp(e.target.value)} />
+          <input className="border rounded-lg px-2 py-1.5" placeholder="ЧСС" type="number" value={hr} onChange={(e)=>setHr(e.target.value)} />
+          <input className="border rounded-lg px-2 py-1.5" placeholder="SpO₂ %" type="number" value={spo2} onChange={(e)=>setSpo2(e.target.value)} />
+          <input className="border rounded-lg px-2 py-1.5" placeholder="Темп. °C" type="number" step="0.1" value={temp} onChange={(e)=>setTemp(e.target.value)} />
+          <input className="border rounded-lg px-2 py-1.5" placeholder="ЧДД" type="number" value={rr} onChange={(e)=>setRr(e.target.value)} />
+          <input className="border rounded-lg px-2 py-1.5" placeholder="GCS" type="number" value={gcs} onChange={(e)=>setGcs(e.target.value)} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-slate-500">Возраст</label>
-            <input 
-              value={age} 
-              onChange={(e) => setAge(e.target.value)} 
-              placeholder="58" 
-              className="mt-1 w-full rounded-xl border-slate-300 focus:border-slate-500 text-sm p-2.5" 
-            />
-          </div>
-          <div className="flex items-end gap-2">
-            <input 
-              id="preg" 
-              type="checkbox" 
-              checked={pregnancy} 
-              onChange={(e) => setPregnancy(e.target.checked)} 
-            />
-            <label htmlFor="preg" className="text-sm text-slate-700">Беременность</label>
-          </div>
+        <div className="grid grid-cols-2 gap-2">
+          <input className="border rounded-lg px-2 py-1.5" placeholder="Возраст" type="number" value={age} onChange={(e)=>setAge(e.target.value)} />
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input type="checkbox" checked={pregnancy} onChange={(e)=>setPregnancy(e.target.checked)} />
+            Беременность
+          </label>
         </div>
 
         <div className="pt-1 flex items-center gap-2">
-          <button 
-            type="submit" 
-            className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm hover:bg-slate-800 active:scale-[.99]"
+          <button
+            type="submit"
+            disabled={isSending}
+            className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm hover:bg-slate-800 active:scale-[.99] disabled:opacity-60"
           >
-            Добавить в очередь
+            {isSending ? "Добавляем..." : "Добавить в очередь"}
           </button>
           <span className="text-xs text-slate-500">AI-оценка приоритета выполняется автоматически</span>
         </div>
