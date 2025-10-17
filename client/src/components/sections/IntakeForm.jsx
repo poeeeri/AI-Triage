@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { SectionCard } from '../common/SectionCard.jsx';
 import { inferProfile } from '../../utils/medicalUtils.js';
 import { triageEngine } from '../../utils/triageEngine.js';
-import { nowISO, PRIORITY } from '../../utils/constants.js';
+import { nowISO, PRIORITY, defaultHint } from '../../utils/constants.js';
 
 const API_BASE = "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
 
@@ -50,8 +50,6 @@ export function IntakeForm({ onAddPatient }) {
   const [temp, setTemp] = useState("");
   const [rr, setRr] = useState("");
   const [gcs, setGcs] = useState("");
-  const [age, setAge] = useState("");
-  const [pregnancy, setPregnancy] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
   async function handleSubmit(e) {
@@ -61,30 +59,31 @@ export function IntakeForm({ onAddPatient }) {
 
     const vitals = {
       bp: bp || undefined,
-      hr: hr ? Number(hr) : undefined,
-      spo2: spo2 ? Number(spo2) : undefined,
-      temp: temp ? Number(temp) : undefined,
-      rr: rr ? Number(rr) : undefined,
-      gcs: gcs ? Number(gcs) : undefined,
+      hr: hr ? String(hr) : undefined,
+      spo2: spo2 ? String(spo2) : undefined,
+      temp: temp ? String(temp) : undefined,
+      rr: rr ? String(rr) : undefined,
+      gcs: gcs ? String(gcs) : undefined,
     };
-    const ageNum = age ? Number(age) : undefined;
+    const hasVitals = Object.values(vitals).some(v => v !== undefined);
 
     const base = {
-      id: `ID-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      // id: `ID-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      // createdAt: nowISO(),
+      id: (globalThis.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `ID-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
       createdAt: nowISO(),
       complaint: complaint.trim(),
       history: history.trim(),
-      vitals,
-      age: ageNum,
-      pregnancy,
+      vitals
     };
 
     try {
-      const serverOut = await postTriage({
-        complaint: base.complaint,
-        history: base.history,
-        vitals: base.vitals,
-      });
+      const payload = hasVitals
+        ? { complaint: base.complaint, history: base.history, vitals: base.vitals }
+        : { complaint: base.complaint, history: base.history };
+      const serverOut = await postTriage(payload);
 
       const triage = adaptServerTriageToUI(serverOut);
       const profile = (serverOut.profile || "therapy").toLowerCase();
@@ -93,7 +92,7 @@ export function IntakeForm({ onAddPatient }) {
     } catch (err) {
       console.warn("Бэк недоступен, используем локальный триаж:", err);
 
-      const profileGuess = inferProfile({ complaint: base.complaint, age: ageNum });
+      const profileGuess = inferProfile({ complaint: base.complaint });
       const local = triageEngine(base);
       const triage = {
         ...local,
@@ -101,12 +100,10 @@ export function IntakeForm({ onAddPatient }) {
       };
       onAddPatient({ ...base, triage, profile: profileGuess });
     } finally {
-      setIsSending(false);
-      setComplaint("");
-      setHistory("");
-      setBp(""); setHr(""); setSpo2(""); setTemp(""); setRr(""); setGcs("");
-      setAge("");
-      setPregnancy(false);
+        setIsSending(false);
+        setComplaint("");
+        setHistory("");
+        setBp(""); setHr(""); setSpo2(""); setTemp(""); setRr(""); setGcs("");
     }
   }
 
@@ -141,13 +138,13 @@ export function IntakeForm({ onAddPatient }) {
           <input className="border rounded-lg px-2 py-1.5" placeholder="GCS" type="number" value={gcs} onChange={(e)=>setGcs(e.target.value)} />
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        {/* <div className="grid grid-cols-2 gap-2">
           <input className="border rounded-lg px-2 py-1.5" placeholder="Возраст" type="number" value={age} onChange={(e)=>setAge(e.target.value)} />
           <label className="flex items-center gap-2 text-xs text-slate-600">
             <input type="checkbox" checked={pregnancy} onChange={(e)=>setPregnancy(e.target.checked)} />
             Беременность
           </label>
-        </div>
+        </div> */}
 
         <div className="pt-1 flex items-center gap-2">
           <button

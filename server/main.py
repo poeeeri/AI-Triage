@@ -75,53 +75,11 @@ def vitals_to_text(n: dict) -> str:
         parts.append(f"GCS: {n['gcs']}")
     return "; ".join(parts) if parts else "не указаны"
 
-ALLOWED_ORIGINS = [
-    "https://poeeeri.github.io",
-    "http://localhost:5173",
-]
-
-AllowedProfileSet = {"therapy","cardio","pulmonology","neurology","obstetric","pediatry"}
-PROFILE_ALIASES = {
-    "therapist":"therapy","internal":"therapy","терапевт":"therapy","терапия":"therapy",
-    "cardiology":"cardio","кардио":"cardio","кардиология":"cardio",
-    "pulmo":"pulmonology","пульмо":"pulmonology","пульмонология":"pulmonology",
-    "neuro":"neurology","невро":"neurology","неврология":"neurology",
-    "obgyn":"obstetric","gynecology":"obstetric","gynaecology":"obstetric","гинекология":"obstetric","акушерство":"obstetric",
-    "pediatrics":"pediatry","pediatric":"pediatry","педиатрия":"pediatry","педиатр":"pediatry",
-}
-
-def clamp_profile(v: Any) -> str:
-    s = (str(v or "")).strip().lower()
-    s = PROFILE_ALIASES.get(s, s)
-    return s if s in AllowedProfileSet else "therapy"
-
-PRIORITY_SET = {"критично срочно","срочно","планово"}
-PRIORITY_ALIASES = {
-    "critical":"критично срочно","критично":"критично срочно",
-    "urgent":"срочно","неотложно":"срочно",
-    "routine":"планово","плановая":"планово"
-}
-
-def clamp_priority(v: Any) -> str:
-    s = (str(v or "")).strip().lower()
-    return s if s in PRIORITY_SET else PRIORITY_ALIASES.get(s, "планово")
-
-def clamp_confidence(v: Any) -> float:
-    try:
-        return max(0.0, min(1.0, float(str(v).replace(",", "."))))
-    except Exception:
-        return 0.7
-
-def sanitize_model_json(parsed: dict) -> dict:
-    out = dict(parsed or {})
-    out["profile"]    = clamp_profile(out.get("profile"))
-    out["priority"]   = clamp_priority(out.get("priority"))
-    out["confidence"] = clamp_confidence(out.get("confidence"))
-    # обязательные поля по умолчанию
-    out.setdefault("red_flags", [])
-    out.setdefault("sources", [])
-    out.setdefault("hint_for_doctor", None)
-    return out
+# ALLOWED_ORIGINS = [
+#     "https://poeeeri.github.io",
+#     "https://poeeeri.github.io/AI-Triage",
+#     "http://localhost:5173",
+# ]
 
 # app.add_middleware(
 #     CORSMiddleware,
@@ -245,11 +203,11 @@ async def triage(payload: TriageInput):
 
         Правила:
         - Учитывай жалобы, анамнез, витальные показатели.
-        - При ответе всегда опирайся на предоставленный контекст из врачебных протоколов (если есть).
+        - Если какие-то витальные не указаны, НЕ повышай приоритет только из-за их отсутствия.
+            Отсутствие данных — это не красный флаг. В этом случае понижай "confidence" и
+            добавляй в "hint_for_doctor" просьбу дозаснять соответствующие показатели.
         - Не ставь диагнозов и не используй предположительные диагнозы.
         - Ответ должен быть СТРОГО валидным JSON в соответствии со схемой.
-        - Никакого текста вне JSON.
-        - Используй данные из контекста, чтобы заполнить "sources" и "hint_for_doctor".
 
         Выводи JSON следующего формата:
         {
@@ -367,7 +325,7 @@ async def triage(payload: TriageInput):
             if not m:
                 raise HTTPException(status_code=500, detail={"parse_error": text})
             parsed = json.loads(m.group(0))
-        parsed = sanitize_model_json(parsed)
+
         return TriageOutput(**parsed)
     except HTTPException:
         raise

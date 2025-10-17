@@ -63,11 +63,16 @@ export default function App() {
     async function handleRetriage() {
     if (!selectedPatient) return;
 
-    const payload = {
-      complaint: selectedPatient.complaint,
-      history: selectedPatient.history,
-      vitals: selectedPatient.vitals,
-    };
+    // const payload = {
+    //   complaint: selectedPatient.complaint,
+    //   history: selectedPatient.history,
+    //   vitals: selectedPatient.vitals,
+    // };
+    const v = selectedPatient.vitals || {};
+    const hasVitals = v && Object.values(v).some(x => x !== undefined && x !== null && x !== "");
+    const payload = hasVitals
+    ? { complaint: selectedPatient.complaint, history: selectedPatient.history, vitals: selectedPatient.vitals }
+    : { complaint: selectedPatient.complaint, history: selectedPatient.history };
 
     try {
       const res = await fetch(`${API}/triage`, {

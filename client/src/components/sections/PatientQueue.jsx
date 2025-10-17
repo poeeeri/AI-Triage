@@ -19,9 +19,9 @@ export function PatientQueue({ patients, profileFilter, onPatientSelect }) {
             </tr>
           </thead>
           <tbody>
-            {patients.map((p) => (
+            {patients.map((p, i) => (
               <tr 
-                key={p.id} 
+                key={p.id ?? p.createdAt ?? `${p.complaint}-${i}`}
                 className="border-t border-slate-200 hover:bg-slate-50 cursor-pointer" 
                 onClick={() => onPatientSelect(p)}
               >
