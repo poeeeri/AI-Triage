@@ -11,5 +11,5 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/AI-triage/', // например: '/ai-triage/'
+  base: '/AI-Triage/',
 })
