@@ -19,17 +19,22 @@ YANDEX_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 # создаем экземпляр фастапи приложения
 app = FastAPI(title="AI-Triage MVP (FastAPI + YandexGPT)")
 
+AllowedProfile = Literal[
+    "therapy", "cardio", "pulmonology", "neurology", "obstetric", "pediatry"
+]
+
 ALLOWED_ORIGINS = [
     "https://poeeeri.github.io",
-    "http://localhost:5173"
+    "http://localhost:5173",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_methods=["GET","POST","OPTIONS"],
+    allow_headers=["Content-Type","Authorization"]
 )
+
 
 # описываем модели
 class Vitals(BaseModel):
@@ -54,7 +59,7 @@ class TriageOutput(BaseModel):
     priority: Literal["критично срочно","срочно","планово"]
     reason: str
     hint_for_doctor: Optional[str] = None
-    profile: Optional[str] = "therapy"
+    profile: AllowedProfile = "therapy"
     confidence: float = Field(..., ge=0, le=1)
     red_flags: List[str]
     sources: Optional[List[SourceRef]] = None

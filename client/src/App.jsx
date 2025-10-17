@@ -6,11 +6,9 @@ import { PatientQueue } from './components/sections/PatientQueue.jsx';
 import { PatientDrawer } from './components/common/PatientDrawer.jsx';
 import { seedPatients } from './data/seedData.js';
 import { triageEngine } from './utils/triageEngine.js';
-import { PRIORITY } from './utils/constants.js';
-import { nowISO, PRIORITY, defaultHint } from '../../utils/constants.js';
+import { nowISO, PRIORITY, defaultHint } from './utils/constants.js';
 
 export default function App() {
-    const API_BASE = import.meta?.env?.VITE_API_BASE;
     const API = import.meta.env.VITE_API_BASE;
 
   
