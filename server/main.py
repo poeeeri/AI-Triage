@@ -25,6 +25,7 @@ AllowedProfile = Literal[
 
 ALLOWED_ORIGINS = [
     "https://poeeeri.github.io",
+    "https://poeeeri.github.io/AI-Triage",
     "http://localhost:5173",
 ]
 

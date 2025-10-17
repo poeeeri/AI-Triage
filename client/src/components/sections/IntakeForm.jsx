@@ -4,7 +4,7 @@ import { inferProfile } from '../../utils/medicalUtils.js';
 import { triageEngine } from '../../utils/triageEngine.js';
 import { nowISO, PRIORITY } from '../../utils/constants.js';
 
-const API_BASE = 'https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net'
+const API_BASE = "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
 
 function adaptServerTriageToUI(server) {
   const map = {
