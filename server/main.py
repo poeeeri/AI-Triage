@@ -87,22 +87,14 @@ def vitals_to_text(n: dict) -> str:
 #     allow_headers=["Content-Type","Authorization"]
 # )
 
-app.add_middleware(
++app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://poeeeri.github.io",   # ваш GH Pages
-        "http://localhost:5173",       # локальная разработка
-    ],
-    allow_origin_regex=r"^https://[a-z0-9-]+\.github\.io$",  # на будущее: любые GH Pages
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_origins=["*"],
+    allow_methods=["*"],
     allow_headers=["*"],
-    max_age=3600,
     allow_credentials=False,
+    max_age=600,
 )
-
-@app.options("/{path:path}", include_in_schema=False)
-def _cors_preflight_any(path: str) -> FastAPIResponse:
-    return FastAPIResponse(status_code=204)
 
 class Vitals(BaseModel):
     bp: Optional[str] = Field(None, description="АД, например '180/110' или '120/80'")
