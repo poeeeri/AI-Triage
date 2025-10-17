@@ -23,17 +23,28 @@ AllowedProfile = Literal[
     "therapy", "cardio", "pulmonology", "neurology", "obstetric", "pediatry"
 ]
 
-ALLOWED_ORIGINS = [
-    "https://poeeeri.github.io",
-    "https://poeeeri.github.io/AI-Triage",
-    "http://localhost:5173",
-]
+# ALLOWED_ORIGINS = [
+#     "https://poeeeri.github.io",
+#     "https://poeeeri.github.io/AI-Triage",
+#     "http://localhost:5173",
+# ]
+
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=ALLOWED_ORIGINS,
+#     allow_methods=["GET","POST","OPTIONS"],
+#     allow_headers=["Content-Type","Authorization"]
+# )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["GET","POST","OPTIONS"],
-    allow_headers=["Content-Type","Authorization"]
+    allow_origins=[
+        "https://poeeeri.github.io",
+        "http://localhost:5173",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=False,
 )
 
 
