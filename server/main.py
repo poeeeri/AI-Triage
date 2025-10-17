@@ -254,7 +254,6 @@ def health():
 
 @app.post("/triage", response_model=TriageOutput)
 async def triage(request: Request):
-    # читаем JSON при любом Content-Type (simple request без префлайта тоже поддерживается)
     try:
         try:
             js = await request.json()
@@ -264,8 +263,6 @@ async def triage(request: Request):
         payload = TriageInput(**js)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Bad payload: {e}")
-
-    norm_v = normalize_vitals(payload.vitals)
 
     system_msg = """
 СИСТЕМА:
