@@ -1,4 +1,4 @@
-import os
+import os, re
 from dotenv import load_dotenv
 from typing import Optional, Literal, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Response
@@ -15,9 +15,8 @@ load_dotenv()
 YC_FOLDER_ID = os.getenv("YANDEX_CLOUD_FOLDER")
 YC_API_KEY = os.getenv("YANDEX_CLOUD_API_KEY")
 YC_MODEL_URI = os.getenv("YC_AGENT_ID")
-TEMPERATURE = float(os.getenv("TEMPERATURE"))
-MAX_TOKENS = int(os.getenv("MAX_TOKENS"))
-
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.2"))
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "800"))
 YANDEX_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 
 # создаем экземпляр фастапи приложения
@@ -91,13 +90,16 @@ def vitals_to_text(n: dict) -> str:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://poeeeri.github.io",
-        "http://localhost:5173",
+        "https://poeeeri.github.io",   # ваш GH Pages
+        "http://localhost:5173",       # локальная разработка
     ],
-    allow_methods=["*"],
+    allow_origin_regex=r"^https://[a-z0-9-]+\.github\.io$",  # на будущее: любые GH Pages
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    max_age=3600,
     allow_credentials=False,
 )
+
 @app.options("/{path:path}", include_in_schema=False)
 def _cors_preflight_any(path: str) -> FastAPIResponse:
     return FastAPIResponse(status_code=204)
