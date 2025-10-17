@@ -21,8 +21,7 @@ app = FastAPI(title="AI-Triage MVP (FastAPI + YandexGPT)")
 
 ALLOWED_ORIGINS = [
     "https://poeeeri.github.io",
-    "https://poeeeri.github.io/AI-triage",
-    'http://localhost:5173/AI-triage/'
+    "http://localhost:5173"
 ]
 
 app.add_middleware(
