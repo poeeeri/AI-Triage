@@ -9,7 +9,9 @@ import { triageEngine } from './utils/triageEngine.js';
 import { nowISO, PRIORITY, defaultHint } from './utils/constants.js';
 
 export default function App() {
-    const API = "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
+    const API = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE)
+      ? import.meta.env.VITE_API_BASE
+      : "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
 
   
     function adaptServerTriageToUI(server) {

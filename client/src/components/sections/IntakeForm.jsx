@@ -4,7 +4,9 @@ import { inferProfile } from '../../utils/medicalUtils.js';
 import { triageEngine } from '../../utils/triageEngine.js';
 import { nowISO, PRIORITY, defaultHint } from '../../utils/constants.js';
 
-const API_BASE = "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
+const API_BASE = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE)
+  ? import.meta.env.VITE_API_BASE
+  : "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
 
 function adaptServerTriageToUI(server) {
   const map = {
@@ -31,7 +33,7 @@ function adaptServerTriageToUI(server) {
 async function postTriage(payload) {
   const res = await fetch(`${API_BASE}/triage`, {
     method: "POST",
-    // headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
