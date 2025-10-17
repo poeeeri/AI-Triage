@@ -19,12 +19,17 @@ YANDEX_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 # создаем экземпляр фастапи приложения
 app = FastAPI(title="AI-Triage MVP (FastAPI + YandexGPT)")
 
+ALLOWED_ORIGINS = [
+    "https://poeeeri.github.io",
+    "https://poeeeri.github.io/AI-triage",
+    'http://localhost:5173/AI-triage/'
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex="http://localhost:5173",
-    allow_credentials=False,
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # описываем модели
