@@ -4,7 +4,7 @@ import { inferProfile } from '../../utils/medicalUtils.js';
 import { triageEngine } from '../../utils/triageEngine.js';
 import { nowISO, PRIORITY } from '../../utils/constants.js';
 
-const API_BASE = import.meta?.env?.VITE_API_BASE || "http://127.0.0.1:8000";
+const API_BASE = "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
 
 function adaptServerTriageToUI(server) {
   const map = {
@@ -14,7 +14,7 @@ function adaptServerTriageToUI(server) {
   };
   const p = map[server.priority] || PRIORITY.PLAN;
 
-  const hint = (server.hint_for_doctor || "").trim() || defaultHint(p.key);
+  const hint = (server.hint_for_doctor || "").trim();
 
   return {
     priorityKey: p.key,

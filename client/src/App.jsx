@@ -6,23 +6,12 @@ import { PatientQueue } from './components/sections/PatientQueue.jsx';
 import { PatientDrawer } from './components/common/PatientDrawer.jsx';
 import { seedPatients } from './data/seedData.js';
 import { triageEngine } from './utils/triageEngine.js';
-import { PRIORITY } from './utils/constants.js';
+import { nowISO, PRIORITY, defaultHint } from './utils/constants.js';
 
 export default function App() {
-    const API_BASE = import.meta?.env?.VITE_API_BASE;
-    const API = import.meta.env.VITE_API_BASE;
+    const API = "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
 
-    function defaultHint(priorityText) {
-      const p = String(priorityText || "").toLowerCase();
-      if (p.includes("критично")) {
-        return "Немедленный осмотр, вызвать профильного специалиста.";
-      }
-      if (p.includes("срочно")) {
-        return "Осмотр в ближайшее время.";
-      }
-      return "Плановый осмотр. Контроль витальных и базовые обследования по показаниям.";
-    }
-
+  
     function adaptServerTriageToUI(server) {
       const PRIORITY_MAP = {
         "критично срочно": "CRIT",

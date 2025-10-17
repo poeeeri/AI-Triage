@@ -5,6 +5,10 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import httpx
+from typing import Optional, Literal, List, Dict, Any, Union
+from pydantic import BaseModel, Field, ValidationError
+from fastapi import Request
+from fastapi.responses import Response as FastAPIResponse
 
 load_dotenv()
 
@@ -19,27 +23,134 @@ YANDEX_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 # создаем экземпляр фастапи приложения
 app = FastAPI(title="AI-Triage MVP (FastAPI + YandexGPT)")
 
+AllowedProfile = Literal[
+    "therapy", "cardio", "pulmonology", "neurology", "obstetric", "pediatry"
+]
+
+
+
+def _parse_bp(bp: Optional[str]) -> tuple[Optional[int], Optional[int]]:
+    if not bp:
+        return None, None
+    import re
+    m = re.search(r"(\d{2,3})\s*[/\\-]\s*(\d{2,3})", str(bp))
+    if not m:
+        return None, None
+    try:
+        return int(m.group(1)), int(m.group(2))
+    except Exception:
+        return None, None
+
+def _to_int(x) -> Optional[int]:
+    if x is None or x == "":
+        return None
+    try:
+        return int(float(str(x).replace(",", ".")))
+    except Exception:
+        return None
+
+def _to_float(x) -> Optional[float]:
+    if x is None or x == "":
+        return None
+    try:
+        return float(str(x).replace(",", "."))
+    except Exception:
+        return None
+
+
+def vitals_to_text(n: dict) -> str:
+    """Красиво отдаём витальные в текст (модель всегда видит одинаковый формат)."""
+    parts = []
+    if n.get("bp_syst") and n.get("bp_diast"):
+        parts.append(f"АД: {n['bp_syst']}/{n['bp_diast']}")
+    if n.get("hr") is not None:
+        parts.append(f"ЧСС: {n['hr']}")
+    if n.get("spo2") is not None:
+        parts.append(f"SpO₂: {n['spo2']}%")
+    if n.get("temp") is not None:
+        parts.append(f"t°: {n['temp']}")
+    if n.get("rr") is not None:
+        parts.append(f"ЧДД: {n['rr']}")
+    if n.get("gcs") is not None:
+        parts.append(f"GCS: {n['gcs']}")
+    return "; ".join(parts) if parts else "не указаны"
+
 ALLOWED_ORIGINS = [
     "https://poeeeri.github.io",
-    "https://poeeeri.github.io/AI-triage",
-    'http://localhost:5173/AI-triage/'
+    "http://localhost:5173",
 ]
+
+AllowedProfileSet = {"therapy","cardio","pulmonology","neurology","obstetric","pediatry"}
+PROFILE_ALIASES = {
+    "therapist":"therapy","internal":"therapy","терапевт":"therapy","терапия":"therapy",
+    "cardiology":"cardio","кардио":"cardio","кардиология":"cardio",
+    "pulmo":"pulmonology","пульмо":"pulmonology","пульмонология":"pulmonology",
+    "neuro":"neurology","невро":"neurology","неврология":"neurology",
+    "obgyn":"obstetric","gynecology":"obstetric","gynaecology":"obstetric","гинекология":"obstetric","акушерство":"obstetric",
+    "pediatrics":"pediatry","pediatric":"pediatry","педиатрия":"pediatry","педиатр":"pediatry",
+}
+
+def clamp_profile(v: Any) -> str:
+    s = (str(v or "")).strip().lower()
+    s = PROFILE_ALIASES.get(s, s)
+    return s if s in AllowedProfileSet else "therapy"
+
+PRIORITY_SET = {"критично срочно","срочно","планово"}
+PRIORITY_ALIASES = {
+    "critical":"критично срочно","критично":"критично срочно",
+    "urgent":"срочно","неотложно":"срочно",
+    "routine":"планово","плановая":"планово"
+}
+
+def clamp_priority(v: Any) -> str:
+    s = (str(v or "")).strip().lower()
+    return s if s in PRIORITY_SET else PRIORITY_ALIASES.get(s, "планово")
+
+def clamp_confidence(v: Any) -> float:
+    try:
+        return max(0.0, min(1.0, float(str(v).replace(",", "."))))
+    except Exception:
+        return 0.7
+
+def sanitize_model_json(parsed: dict) -> dict:
+    out = dict(parsed or {})
+    out["profile"]    = clamp_profile(out.get("profile"))
+    out["priority"]   = clamp_priority(out.get("priority"))
+    out["confidence"] = clamp_confidence(out.get("confidence"))
+    # обязательные поля по умолчанию
+    out.setdefault("red_flags", [])
+    out.setdefault("sources", [])
+    out.setdefault("hint_for_doctor", None)
+    return out
+
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=ALLOWED_ORIGINS,
+#     allow_methods=["GET","POST","OPTIONS"],
+#     allow_headers=["Content-Type","Authorization"]
+# )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_origins=[
+        "https://poeeeri.github.io",
+        "http://localhost:5173",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=False,
 )
+@app.options("/{path:path}", include_in_schema=False)
+def _cors_preflight_any(path: str) -> FastAPIResponse:
+    return FastAPIResponse(status_code=204)
 
-# описываем модели
 class Vitals(BaseModel):
-    bp: Optional[str] = Field(None, description="АД, например '180/110'")
-    hr: Optional[str] = Field(None, description="ЧСС")
-    spo2: Optional[str] = Field(None, description="SpO2 в процентах")
-    temp: Optional[str] = Field(None, description="Температура, °C")
-    rr: Optional[str] = Field(None, description="ЧДД")
-    gcs: Optional[str] = Field(None, description="Шкала комы Глазго")
+    bp: Optional[str] = Field(None, description="АД, например '180/110' или '120/80'")
+    hr: Optional[Union[int, float, str]] = None
+    spo2: Optional[Union[int, float, str]] = None
+    temp: Optional[Union[int, float, str]] = None
+    rr: Optional[Union[int, float, str]] = None
+    gcs: Optional[Union[int, float, str]] = None
 
 class TriageInput(BaseModel):
     complaint: str
@@ -55,7 +166,7 @@ class TriageOutput(BaseModel):
     priority: Literal["критично срочно","срочно","планово"]
     reason: str
     hint_for_doctor: Optional[str] = None
-    profile: Optional[str] = "therapy"
+    profile: AllowedProfile = "therapy"
     confidence: float = Field(..., ge=0, le=1)
     red_flags: List[str]
     sources: Optional[List[SourceRef]] = None
@@ -96,6 +207,23 @@ def _yc_payload(messages: List[Dict[str, str]],
         "messages": messages,
     }
 
+def normalize_vitals(v: Optional[Vitals]) -> dict:
+    """Возвращает унифицированный словарь для промпта и логики."""
+    if not v:
+        return {
+            "bp_syst": None, "bp_diast": None,
+            "hr": None, "spo2": None, "temp": None, "rr": None, "gcs": None
+        }
+    s, d = _parse_bp(v.bp)
+    return {
+        "bp_syst": s,
+        "bp_diast": d,
+        "hr": _to_int(v.hr),
+        "spo2": _to_int(v.spo2),
+        "temp": _to_float(v.temp),
+        "rr": _to_int(v.rr),
+        "gcs": _to_int(v.gcs),
+    }
 
 @app.get("/health")
 def health():
@@ -128,7 +256,7 @@ async def triage(payload: TriageInput):
         "priority": "критично срочно | срочно | планово",
         "reason": "2–3 предложения, почему выбран именно этот приоритет (логика, ключевые факторы, отклонения витальных показателей)",
         "hint_for_doctor": "Краткие первые шаги, которые врач должен выполнить (например: снять ЭКГ, кислород, анализы и т.п.)",
-        "profile": "therapy | pediatrics | trauma | ... (основной профиль пациента, если известен)",
+        "profile": "therapy | cardio | pulmonology | neurology | obstetric | pediatry",
         "red_flags": ["краткие пункты ключевых 'красных флагов'"],
         "sources": [
             {"id": "doc_cardio_01", "section": "1", "version_date": "2025-05-12"}
@@ -194,11 +322,14 @@ async def triage(payload: TriageInput):
 """
     )
 
+    norm_v = normalize_vitals(payload.vitals)
+
     user_msg = (
         "INPUT:\n"
         f"complaint: {payload.complaint}\n"
         f"history: {payload.history}\n"
-        f"vitals: {payload.vitals.model_dump() if payload.vitals else None}\n\n"
+        f"vitals: {vitals_to_text(norm_v)}\n"
+        "\n"
         "ОТВЕТИ В JSON (без лишнего текста), пример структуры:\n"
         "{\n"
         '  "priority": "критично срочно",\n'
@@ -211,6 +342,7 @@ async def triage(payload: TriageInput):
         "}\n"
         "Если не уверена — понижай confidence, но JSON-схему не нарушай."
     )
+
 
     messages = [
         {"role": "system", "text": system_msg},
@@ -235,7 +367,7 @@ async def triage(payload: TriageInput):
             if not m:
                 raise HTTPException(status_code=500, detail={"parse_error": text})
             parsed = json.loads(m.group(0))
-
+        parsed = sanitize_model_json(parsed)
         return TriageOutput(**parsed)
     except HTTPException:
         raise
@@ -269,3 +401,4 @@ async def yandex_prompt(p: PromptProxy):
         return {"text": text, "usage": res["result"].get("usage"), "modelVersion": res["result"].get("modelVersion")}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
