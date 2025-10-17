@@ -10,6 +10,7 @@ import { PRIORITY } from './utils/constants.js';
 
 export default function App() {
     const API_BASE = import.meta?.env?.VITE_API_BASE;
+    const API = import.meta.env.VITE_API_BASE;
 
     function defaultHint(priorityText) {
       const p = String(priorityText || "").toLowerCase();
@@ -80,7 +81,7 @@ export default function App() {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/triage`, {
+      const res = await fetch(`${API}/triage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
