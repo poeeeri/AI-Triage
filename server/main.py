@@ -29,6 +29,36 @@ app.add_middleware(
     max_age=600,
 )
 
+from fastapi.responses import PlainTextResponse
+
+@app.options("/{path:path}")
+async def any_options(path: str, request: Request):
+    origin   = request.headers.get("Origin", "*")
+    req_hdrs = request.headers.get("Access-Control-Request-Headers", "content-type")
+    resp = PlainTextResponse("", status_code=204)
+    # CORS
+    resp.headers["Access-Control-Allow-Origin"]  = origin
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = req_hdrs
+    resp.headers["Access-Control-Max-Age"]       = "600"
+    # 🔒 security/заголовки для валидного префлайта
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Cache-Control"]          = "no-store"
+    resp.headers["Server"]                 = "fastapi"
+    return resp
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    # CORS (на случай если ингрест срежет стандартные)
+    resp.headers.setdefault("Access-Control-Allow-Origin", request.headers.get("Origin", "*"))
+    # 🔒 security
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Cache-Control", "no-store")
+    resp.headers["Server"] = "fastapi"  # минимальное имя без версии и uvicorn
+    return resp
+
 AllowedProfile = Literal["therapy", "cardio", "pulmonology", "neurology", "obstetric", "pediatry"]
 
 def _parse_bp(bp: Optional[str]) -> tuple[Optional[int], Optional[int]]:
@@ -263,7 +293,8 @@ async def triage(request: Request):
         payload = TriageInput(**js)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Bad payload: {e}")
-
+    
+    norm_v = normalize_vitals(payload.vitals)
     system_msg = """
 СИСТЕМА:
 Ты — медицинский ассистент по триажу в приёмном отделении. 
