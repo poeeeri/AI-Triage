@@ -98,8 +98,8 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=False,
 )
-@app.options("/triage", include_in_schema=False)
-def _cors_preflight_triage() -> FastAPIResponse:
+@app.options("/{path:path}", include_in_schema=False)
+def _cors_preflight_any(path: str) -> FastAPIResponse:
     return FastAPIResponse(status_code=204)
 
 class Vitals(BaseModel):
@@ -214,7 +214,7 @@ async def triage(payload: TriageInput):
         "priority": "критично срочно | срочно | планово",
         "reason": "2–3 предложения, почему выбран именно этот приоритет (логика, ключевые факторы, отклонения витальных показателей)",
         "hint_for_doctor": "Краткие первые шаги, которые врач должен выполнить (например: снять ЭКГ, кислород, анализы и т.п.)",
-        ""profile": "therapy | cardio | pulmonology | neurology | obstetric | pediatry"",
+        "profile": "therapy | cardio | pulmonology | neurology | obstetric | pediatry",
         "red_flags": ["краткие пункты ключевых 'красных флагов'"],
         "sources": [
             {"id": "doc_cardio_01", "section": "1", "version_date": "2025-05-12"}
@@ -280,11 +280,14 @@ async def triage(payload: TriageInput):
 """
     )
 
+    norm_v = normalize_vitals(payload.vitals)
+
     user_msg = (
         "INPUT:\n"
         f"complaint: {payload.complaint}\n"
         f"history: {payload.history}\n"
-        f"vitals: {vitals_to_text(normalize_vitals)}"
+        f"vitals: {vitals_to_text(norm_v)}\n"
+        "\n"
         "ОТВЕТИ В JSON (без лишнего текста), пример структуры:\n"
         "{\n"
         '  "priority": "критично срочно",\n'
@@ -297,6 +300,7 @@ async def triage(payload: TriageInput):
         "}\n"
         "Если не уверена — понижай confidence, но JSON-схему не нарушай."
     )
+
 
     messages = [
         {"role": "system", "text": system_msg},
