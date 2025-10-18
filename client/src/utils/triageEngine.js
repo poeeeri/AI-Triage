@@ -1,7 +1,7 @@
 import { PRIORITY } from './constants.js';
 import { parseBP } from './medicalUtils.js';
 
-export function triageEngine({ complaint = "", history = "", vitals = {}, age, pregnancy }) {
+export function triageEngine({ complaint = "", history = "", vitals = {} }) {
   const redFlags = [];
   const c = (complaint || "").toLowerCase();
   const h = (history || "").toLowerCase();
@@ -30,8 +30,7 @@ export function triageEngine({ complaint = "", history = "", vitals = {}, age, p
   if (spo2 !== undefined && spo2 >= 92 && spo2 < 94) urgentSignals.push("SpO₂ 92–94% ");
   if (temp && temp >= 38.5) urgentSignals.push("t° ≥ 38.5");
   if (hr && hr >= 110) urgentSignals.push("ЧСС ≥ 110");
-  if (/хобл|беремен|диабет|иммуносуп/i.test(h) && temp && temp >= 38.0) urgentSignals.push("коморбидность + лихорадка");
-
+  if (/хобл|диабет|иммуносуп/i.test(h) && temp && temp >= 38.0) urgentSignals.push("коморбидность + лихорадка");
   // Decide priority
   let priority = PRIORITY.PLAN;
   let conf = 0.72;
