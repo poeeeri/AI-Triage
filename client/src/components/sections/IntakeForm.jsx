@@ -50,8 +50,6 @@ export function IntakeForm({ onAddPatient }) {
   const [temp, setTemp] = useState("");
   const [rr, setRr] = useState("");
   const [gcs, setGcs] = useState("");
-  const [age, setAge] = useState("");
-  const [pregnancy, setPregnancy] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
   async function handleSubmit(e) {
@@ -67,7 +65,6 @@ export function IntakeForm({ onAddPatient }) {
       rr: rr ? Number(rr) : undefined,
       gcs: gcs ? Number(gcs) : undefined,
     };
-    const ageNum = age ? Number(age) : undefined;
 
     const base = {
       id: `ID-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
@@ -75,8 +72,6 @@ export function IntakeForm({ onAddPatient }) {
       complaint: complaint.trim(),
       history: history.trim(),
       vitals,
-      age: ageNum,
-      pregnancy,
     };
 
     try {
@@ -92,12 +87,11 @@ export function IntakeForm({ onAddPatient }) {
       onAddPatient({ ...base, triage, profile });
     } catch (err) {
       console.warn("Бэк недоступен, используем локальный триаж:", err);
-
-      const profileGuess = inferProfile({ complaint: base.complaint, age: ageNum });
+      const profileGuess = inferProfile({ complaint: base.complaint });
       const local = triageEngine(base);
       const triage = {
         ...local,
-        hint_for_doctor: local.hint_for_doctor || defaultHint(local.priorityKey),
+        hint_for_doctor: local.hint_for_doctor || "",
       };
       onAddPatient({ ...base, triage, profile: profileGuess });
     } finally {
@@ -105,61 +99,64 @@ export function IntakeForm({ onAddPatient }) {
       setComplaint("");
       setHistory("");
       setBp(""); setHr(""); setSpo2(""); setTemp(""); setRr(""); setGcs("");
-      setAge("");
-      setPregnancy(false);
     }
   }
 
   return (
-    <SectionCard title="Новый пациент (ввод данных)" className="lg:col-span-1">
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <div>
-          <label className="text-xs text-slate-500">Жалобы</label>
-          <textarea
-            value={complaint}
-            onChange={(e) => setComplaint(e.target.value)}
-            className="w-full border rounded-lg px-2 py-1.5"
-            required
-          />
+    <div className="lg:col-span-1 sticky top-20 self-start">
+      <SectionCard>
+        <div className="mb-2">
+          <h2 className="text-lg font-semibold text-slate-800">Новый пациент (ввод данных)</h2>
         </div>
+        
+        <form onSubmit={handleSubmit} className="space-y-2">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700 mb-1">Жалобы</h3>
+            <textarea
+              value={complaint}
+              onChange={(e) => setComplaint(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              rows="2"
+              required
+            />
+          </div>
 
-        <div>
-          <label className="text-xs text-slate-500">Анамнез</label>
-          <textarea
-            value={history}
-            onChange={(e) => setHistory(e.target.value)}
-            className="w-full border rounded-lg px-2 py-1.5"
-          />
-        </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700 mb-1">Анамнез</h3>
+            <textarea
+              value={history}
+              onChange={(e) => setHistory(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              rows="1"
+            />
+          </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <input className="border rounded-lg px-2 py-1.5" placeholder="АД (напр. 120/80)" value={bp} onChange={(e)=>setBp(e.target.value)} />
-          <input className="border rounded-lg px-2 py-1.5" placeholder="ЧСС" type="number" value={hr} onChange={(e)=>setHr(e.target.value)} />
-          <input className="border rounded-lg px-2 py-1.5" placeholder="SpO₂ %" type="number" value={spo2} onChange={(e)=>setSpo2(e.target.value)} />
-          <input className="border rounded-lg px-2 py-1.5" placeholder="Темп. °C" type="number" step="0.1" value={temp} onChange={(e)=>setTemp(e.target.value)} />
-          <input className="border rounded-lg px-2 py-1.5" placeholder="ЧДД" type="number" value={rr} onChange={(e)=>setRr(e.target.value)} />
-          <input className="border rounded-lg px-2 py-1.5" placeholder="GCS" type="number" value={gcs} onChange={(e)=>setGcs(e.target.value)} />
-        </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700 mb-1">Показатели</h3>
+            <div className="grid grid-cols-2 gap-2">
+              <input className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="АД (напр. 120/80)" value={bp} onChange={(e)=>setBp(e.target.value)} />
+              <input className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="ЧСС" type="number" value={hr} onChange={(e)=>setHr(e.target.value)} />
+              <input className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="SpO₂ %" type="number" value={spo2} onChange={(e)=>setSpo2(e.target.value)} />
+              <input className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Темп. °C" type="number" step="0.1" value={temp} onChange={(e)=>setTemp(e.target.value)} />
+              <input className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="ЧДД" type="number" value={rr} onChange={(e)=>setRr(e.target.value)} />
+              <input className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="GCS" type="number" value={gcs} onChange={(e)=>setGcs(e.target.value)} />
+            </div>
+          </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <input className="border rounded-lg px-2 py-1.5" placeholder="Возраст" type="number" value={age} onChange={(e)=>setAge(e.target.value)} />
-          <label className="flex items-center gap-2 text-xs text-slate-600">
-            <input type="checkbox" checked={pregnancy} onChange={(e)=>setPregnancy(e.target.checked)} />
-            Беременность
-          </label>
-        </div>
-
-        <div className="pt-1 flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={isSending}
-            className="px-4 py-2 rounded-xl bg-slate-900 text-white text-sm hover:bg-slate-800 active:scale-[.99] disabled:opacity-60"
-          >
-            {isSending ? "Добавляем..." : "Добавить в очередь"}
-          </button>
-          <span className="text-xs text-slate-500">AI-оценка приоритета выполняется автоматически</span>
-        </div>
-      </form>
-    </SectionCard>
+          <div>
+            <button
+              type="submit"
+              disabled={isSending}
+              className="w-full px-4 py-3 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800 active:scale-[.99] disabled:opacity-60 transition-all duration-200"
+            >
+              {isSending ? "Добавляем..." : "Добавить в очередь"}
+            </button>
+            <div className="mt-1 text-center">
+              <span className="text-xs text-slate-500">AI-оценка приоритета выполняется автоматически</span>
+            </div>
+          </div>
+        </form>
+      </SectionCard>
+    </div>
   );
 }
