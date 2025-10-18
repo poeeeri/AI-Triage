@@ -80,9 +80,9 @@ export default function App() {
     : { complaint: selectedPatient.complaint, history: selectedPatient.history };
 
     try {
+      // Без Content-Type, чтобы не запускать CORS preflight
       const res = await fetch(`${API}/triage`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(await res.text());

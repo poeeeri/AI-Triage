@@ -34,9 +34,10 @@ function adaptServerTriageToUI(server) {
 }
 
 async function postTriage(payload) {
+  // Отправляем как text/plain (без заголовка Content-Type),
+  // чтобы избежать CORS preflight. Сервер парсит raw JSON из тела.
   const res = await fetch(`${API_BASE}/triage`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
