@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import httpx
+from fastapi.responses import Response
 
 load_dotenv()
 
@@ -18,6 +19,11 @@ MAX_TOKENS = int(os.getenv("MAX_TOKENS", "800"))
 YANDEX_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 
 app = FastAPI(title="AI-Triage MVP (FastAPI + YandexGPT)")
+
+# Явные ответы для preflight CORS (OPTIONS), чтобы прокси/ингресс не ломали его
+@app.options("/{any_path:path}")
+def _cors_preflight_catch_all(any_path: str):
+    return Response(status_code=204)
 
 # CORS: максимально широкий, чтобы префлайты не падали на ингресте/прокси
 app.add_middleware(

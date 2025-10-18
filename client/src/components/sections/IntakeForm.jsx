@@ -4,6 +4,9 @@ import { inferProfile } from '../../utils/medicalUtils.js';
 import { triageEngine } from '../../utils/triageEngine.js';
 import { nowISO, PRIORITY, defaultHint } from '../../utils/constants.js';
 
+const safeDefaultHint = (pkey) =>
+  (typeof defaultHint === 'function' ? defaultHint(pkey) : 'Рекомендации будут уточнены при осмотре.');
+
 const API_BASE = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE)
   ? import.meta.env.VITE_API_BASE
   : "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
@@ -98,7 +101,7 @@ export function IntakeForm({ onAddPatient }) {
       const local = triageEngine(base);
       const triage = {
         ...local,
-        hint_for_doctor: local.hint_for_doctor || defaultHint(local.priorityKey),
+        hint_for_doctor: local.hint_for_doctor || safeDefaultHint(local.priorityKey),
       };
       onAddPatient({ ...base, triage, profile: profileGuess });
     } finally {

@@ -8,6 +8,9 @@ import { seedPatients } from './data/seedData.js';
 import { triageEngine } from './utils/triageEngine.js';
 import { nowISO, PRIORITY, defaultHint } from './utils/constants.js';
 
+const safeDefaultHint = (pkey) =>
+  (typeof defaultHint === 'function' ? defaultHint(pkey) : 'Рекомендации будут уточнены при осмотре.');
+
 export default function App() {
     const API = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE)
       ? import.meta.env.VITE_API_BASE
@@ -22,7 +25,7 @@ export default function App() {
       };
       const code = PRIORITY_MAP[server.priority] || "PLAN";
       const p = PRIORITY[code];
-      const hint = (server.hint_for_doctor || "").trim() || defaultHint(p.key);
+      const hint = (server.hint_for_doctor || "").trim() || safeDefaultHint(p.key);
 
       return {
         priorityKey: p.key,
@@ -100,7 +103,7 @@ export default function App() {
       const local = triageEngine(selectedPatient);
       const withHint = {
         ...local,
-        hint_for_doctor: local.hint_for_doctor || defaultHint(local.priorityKey),
+        hint_for_doctor: local.hint_for_doctor || safeDefaultHint(local.priorityKey),
       };
       setPatients(prev =>
         prev.map(x =>
