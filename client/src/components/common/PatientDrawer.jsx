@@ -1,6 +1,3 @@
-import React from 'react';
-import { PRIORITY } from '../../utils/constants.js';
-import { triageEngine } from '../../utils/triageEngine.js';
 import { SectionCard } from './SectionCard.jsx';
 import { PriorityBadge } from './PriorityBadge.jsx';
 
@@ -49,6 +46,15 @@ export function PatientDrawer({ selected, onClose, onRetriage, onMarkAsSeen }) {
                 ))}
               </div>
             )}
+          </SectionCard>
+
+          <SectionCard title="Подсказка для врача">
+            <div className="text-sm text-emerald-700 whitespace-pre-wrap leading-relaxed">
+              {selected.triage?.hint_for_doctor
+                || (selected.triage?.priorityKey?.includes("критично") && "Немедленный осмотр. Снять ЭКГ, обеспечить SpO₂ ≥94%, ASA/нитраты, тропонины, вызвать профильного специалиста.")
+                || (selected.triage?.priorityKey?.includes("срочно") && "Осмотр в ближайшее время. Повторная оценка витальных, базовая диагностика, эскалация при ухудшении.")
+                || "Плановый осмотр. Контроль витальных и базовые обследования по показаниям."}
+            </div>
           </SectionCard>
 
           <div className="flex items-center gap-2">

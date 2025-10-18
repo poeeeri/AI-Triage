@@ -14,3 +14,10 @@ export const PROFILE = [
 
 export const cls = (...a) => a.filter(Boolean).join(" ");
 export const nowISO = () => new Date().toISOString();
+
+export const defaultHint = (priorityText) => {
+  const p = String(priorityText || "").toLowerCase();
+  if (p.includes("критично")) return "Немедленный осмотр, вызов профильного специалиста.";
+  if (p.includes("срочно"))   return "Осмотр в ближайшее время.";
+  return "Плановый осмотр. Контроль витальных и базовые обследования по показаниям.";
+};
