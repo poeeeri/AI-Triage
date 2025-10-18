@@ -1,6 +1,5 @@
 export function inferProfile({ complaint = "", age }) {
   const c = (complaint || "").toLowerCase();
-  if (age !== undefined && age < 18) return "peds";
   if (/травм|перелом|рана|ушиб|кровотеч/i.test(c)) return "trauma";
   if (/онемени|асимметри|речь|судорог|инсульт/i.test(c)) return "neuro";
   if (/одышк|дыхани|грудин|сердц|боль в груди/i.test(c)) return "therapy";
