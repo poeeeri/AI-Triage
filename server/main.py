@@ -1,38 +1,45 @@
 import os
+import re
+import json
 from dotenv import load_dotenv
-from typing import Optional, Literal, List, Dict, Any
-from fastapi import FastAPI, HTTPException, Response
+from typing import Optional, Literal, List, Dict, Any, Union
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import httpx
-from typing import Optional, Literal, List, Dict, Any, Union
-from pydantic import BaseModel, Field, ValidationError
-from fastapi import Request
-from fastapi.responses import Response as FastAPIResponse
+from fastapi.responses import Response
 
 load_dotenv()
 
 YC_FOLDER_ID = os.getenv("YANDEX_CLOUD_FOLDER")
 YC_API_KEY = os.getenv("YANDEX_CLOUD_API_KEY")
 YC_MODEL_URI = os.getenv("YC_AGENT_ID")
-TEMPERATURE = float(os.getenv("TEMPERATURE"))
-MAX_TOKENS = int(os.getenv("MAX_TOKENS"))
-
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.2"))
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "800"))
 YANDEX_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 
-# создаем экземпляр фастапи приложения
 app = FastAPI(title="AI-Triage MVP (FastAPI + YandexGPT)")
 
-AllowedProfile = Literal[
-    "therapy", "cardio", "pulmonology", "neurology", "obstetric", "pediatry"
-]
+# Явные ответы для preflight CORS (OPTIONS), чтобы прокси/ингресс не ломали его
+@app.options("/{any_path:path}")
+def _cors_preflight_catch_all(any_path: str):
+    return Response(status_code=204)
 
+# CORS: максимально широкий, чтобы префлайты не падали на ингресте/прокси
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],     # публичный API без куки — ок
+    allow_methods=["*"],     # GET/POST/OPTIONS и т.д.
+    allow_headers=["*"],     # content-type и любые другие
+    allow_credentials=False, # с "*" креды всё равно нельзя
+    max_age=600,
+)
 
+AllowedProfile = Literal["therapy", "cardio", "pulmonology", "neurology", "obstetric", "pediatry"]
 
 def _parse_bp(bp: Optional[str]) -> tuple[Optional[int], Optional[int]]:
     if not bp:
         return None, None
-    import re
     m = re.search(r"(\d{2,3})\s*[/\\-]\s*(\d{2,3})", str(bp))
     if not m:
         return None, None
@@ -57,9 +64,7 @@ def _to_float(x) -> Optional[float]:
     except Exception:
         return None
 
-
 def vitals_to_text(n: dict) -> str:
-    """Красиво отдаём витальные в текст (модель всегда видит одинаковый формат)."""
     parts = []
     if n.get("bp_syst") and n.get("bp_diast"):
         parts.append(f"АД: {n['bp_syst']}/{n['bp_diast']}")
@@ -74,75 +79,6 @@ def vitals_to_text(n: dict) -> str:
     if n.get("gcs") is not None:
         parts.append(f"GCS: {n['gcs']}")
     return "; ".join(parts) if parts else "не указаны"
-
-ALLOWED_ORIGINS = [
-    "https://poeeeri.github.io",
-    "http://localhost:5173",
-]
-
-AllowedProfileSet = {"therapy","cardio","pulmonology","neurology","obstetric","pediatry"}
-PROFILE_ALIASES = {
-    "therapist":"therapy","internal":"therapy","терапевт":"therapy","терапия":"therapy",
-    "cardiology":"cardio","кардио":"cardio","кардиология":"cardio",
-    "pulmo":"pulmonology","пульмо":"pulmonology","пульмонология":"pulmonology",
-    "neuro":"neurology","невро":"neurology","неврология":"neurology",
-    "obgyn":"obstetric","gynecology":"obstetric","gynaecology":"obstetric","гинекология":"obstetric","акушерство":"obstetric",
-    "pediatrics":"pediatry","pediatric":"pediatry","педиатрия":"pediatry","педиатр":"pediatry",
-}
-
-def clamp_profile(v: Any) -> str:
-    s = (str(v or "")).strip().lower()
-    s = PROFILE_ALIASES.get(s, s)
-    return s if s in AllowedProfileSet else "therapy"
-
-PRIORITY_SET = {"критично срочно","срочно","планово"}
-PRIORITY_ALIASES = {
-    "critical":"критично срочно","критично":"критично срочно",
-    "urgent":"срочно","неотложно":"срочно",
-    "routine":"планово","плановая":"планово"
-}
-
-def clamp_priority(v: Any) -> str:
-    s = (str(v or "")).strip().lower()
-    return s if s in PRIORITY_SET else PRIORITY_ALIASES.get(s, "планово")
-
-def clamp_confidence(v: Any) -> float:
-    try:
-        return max(0.0, min(1.0, float(str(v).replace(",", "."))))
-    except Exception:
-        return 0.7
-
-def sanitize_model_json(parsed: dict) -> dict:
-    out = dict(parsed or {})
-    out["profile"]    = clamp_profile(out.get("profile"))
-    out["priority"]   = clamp_priority(out.get("priority"))
-    out["confidence"] = clamp_confidence(out.get("confidence"))
-    # обязательные поля по умолчанию
-    out.setdefault("red_flags", [])
-    out.setdefault("sources", [])
-    out.setdefault("hint_for_doctor", None)
-    return out
-
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=ALLOWED_ORIGINS,
-#     allow_methods=["GET","POST","OPTIONS"],
-#     allow_headers=["Content-Type","Authorization"]
-# )
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://poeeeri.github.io",
-        "http://localhost:5173",
-    ],
-    allow_methods=["*"],
-    allow_headers=["*"],
-    allow_credentials=False,
-)
-@app.options("/{path:path}", include_in_schema=False)
-def _cors_preflight_any(path: str) -> FastAPIResponse:
-    return FastAPIResponse(status_code=204)
 
 class Vitals(BaseModel):
     bp: Optional[str] = Field(None, description="АД, например '180/110' или '120/80'")
@@ -163,14 +99,13 @@ class SourceRef(BaseModel):
     version_date: Optional[str] = None
 
 class TriageOutput(BaseModel):
-    priority: Literal["критично срочно","срочно","планово"]
+    priority: Literal["критично срочно", "срочно", "планово"]
     reason: str
     hint_for_doctor: Optional[str] = None
     profile: AllowedProfile = "therapy"
     confidence: float = Field(..., ge=0, le=1)
     red_flags: List[str]
     sources: Optional[List[SourceRef]] = None
-
 
 class PromptProxy(BaseModel):
     system: Optional[str] = None
@@ -180,18 +115,16 @@ class PromptProxy(BaseModel):
     model_uri: Optional[str] = None
     messages: Optional[List[Dict[str, str]]] = None
 
-
 def _yc_headers() -> Dict[str, str]:
     if YC_API_KEY:
         return {
-                "Authorization": f"Api-Key {YC_API_KEY}",
-                "x-folder-id": YC_FOLDER_ID,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            }
+            "Authorization": f"Api-Key {YC_API_KEY}",
+            "x-folder-id": YC_FOLDER_ID,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
     raise RuntimeError("нет апи ключа")
 
-# тело запроса к апи
 def _yc_payload(messages: List[Dict[str, str]],
                 temperature: float = TEMPERATURE,
                 max_tokens: int = MAX_TOKENS,
@@ -208,12 +141,8 @@ def _yc_payload(messages: List[Dict[str, str]],
     }
 
 def normalize_vitals(v: Optional[Vitals]) -> dict:
-    """Возвращает унифицированный словарь для промпта и логики."""
     if not v:
-        return {
-            "bp_syst": None, "bp_diast": None,
-            "hr": None, "spo2": None, "temp": None, "rr": None, "gcs": None
-        }
+        return {"bp_syst": None, "bp_diast": None, "hr": None, "spo2": None, "temp": None, "rr": None, "gcs": None}
     s, d = _parse_bp(v.bp)
     return {
         "bp_syst": s,
@@ -225,124 +154,167 @@ def normalize_vitals(v: Optional[Vitals]) -> dict:
         "gcs": _to_int(v.gcs),
     }
 
+def _norm_strip_lower(x: Any) -> str:
+    if x is None:
+        return ""
+    s = str(x).strip().lower()
+    # частая путаница латиницы/кириллицы: 'o' vs 'о'
+    s = s.replace("o", "о")  # латинская 'o' -> кириллическая
+    return s
+
+_ALLOWED_PRIOR = ("критично срочно", "срочно", "планово")
+
+def normalize_priority(val: Any) -> str:
+    s = _norm_strip_lower(val)
+    if s in _ALLOWED_PRIOR:
+        return s
+    # синонимы/опечатки
+    if s in {"критично", "немедленно", "экстренно", "неотложно", "critical", "stat", "emergent"}:
+        return "критично срочно"
+    if s in {"срочно", "urgent", "soon", "как можно скорее"}:
+        return "срочно"
+    if s in {"план", "плановый", "планово", "плановo", "plan", "planned", "non-urgent", "plano", "planov", "planovo"}:
+        return "планово"
+    # эвристика по первым буквам
+    if s.startswith("крит"): return "критично срочно"
+    if s.startswith("сроч"): return "срочно"
+    if s.startswith("план"): return "планово"
+    # безопасный дефолт — середина шкалы
+    return "срочно"
+
+_ALLOWED_PROFILES = {"therapy", "cardio", "pulmonology", "neurology", "obstetric", "pediatry"}
+
+def normalize_profile(val: Any) -> str:
+    s = _norm_strip_lower(val)
+    # допускаем англ./рус. названия и опечатки
+    aliases = {
+        "терапия": "therapy", "therap": "therapy", "general": "therapy",
+        "кардио": "cardio", "cardiology": "cardio",
+        "пульмо": "pulmonology", "respiratory": "pulmonology", "pulmo": "pulmonology",
+        "невро": "neurology", "neuro": "neurology",
+        "акушерство": "obstetric", "obstetrics": "obstetric", "pregnancy": "obstetric",
+        "педиатр": "pediatry", "pediatric": "pediatry", "pediatrics": "pediatry",
+    }
+    if s in _ALLOWED_PROFILES:
+        return s
+    if s in aliases:
+        return aliases[s]
+    # эвристики по префиксам
+    for k, v in aliases.items():
+        if s.startswith(k):
+            return v
+    return "therapy"
+
+def coerce_model_output(obj: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(obj or {})
+    # priority
+    out["priority"] = normalize_priority(out.get("priority"))
+    # profile
+    out["profile"] = normalize_profile(out.get("profile"))
+    # confidence -> [0,1], дефолт пониженный при сомнениях
+    try:
+        c = float(out.get("confidence", 0.7))
+    except Exception:
+        c = 0.7
+    out["confidence"] = max(0.0, min(1.0, c))
+    # red_flags -> список строк
+    rf = out.get("red_flags", [])
+    if isinstance(rf, (str, int, float)):
+        rf = [str(rf)]
+    elif isinstance(rf, list):
+        rf = [str(x) for x in rf]
+    else:
+        rf = []
+    out["red_flags"] = rf
+    # hint_for_doctor / reason — строки
+    for k in ("hint_for_doctor", "reason"):
+        v = out.get(k)
+        out[k] = "" if v is None else str(v)
+    # sources — список объектов (мягкая нормализация)
+    src = out.get("sources")
+    if src is None:
+        out["sources"] = []
+    elif isinstance(src, list):
+        norm_src = []
+        for s in src:
+            try:
+                s_id = str(s.get("id"))
+                if not s_id:
+                    continue
+                norm_src.append({
+                    "id": s_id,
+                    "section": None if s.get("section") in (None, "") else str(s.get("section")),
+                    "version_date": None if s.get("version_date") in (None, "") else str(s.get("version_date")),
+                })
+            except Exception:
+                continue
+        out["sources"] = norm_src
+    else:
+        out["sources"] = []
+    return out
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "modelUri": YC_MODEL_URI}
 
-
 @app.post("/triage", response_model=TriageOutput)
-async def triage(payload: TriageInput):
-    system_msg = (
-        """
-        СИСТЕМА:
-        Ты — медицинский ассистент по триажу в приёмном отделении. 
-        Твоя задача — по жалобам, анамнезу и витальным показателям классифицировать приоритет осмотра пациента.
-
-        Приоритеты:
-        - "критично срочно" — немедленный осмотр, угроза жизни;
-        - "срочно" — осмотр в ближайшее время, есть риски ухудшения;
-        - "планово" — может подождать, нет признаков неотложности.
-
-        Правила:
-        - Учитывай жалобы, анамнез, витальные показатели.
-        - При ответе всегда опирайся на предоставленный контекст из врачебных протоколов (если есть).
-        - Не ставь диагнозов и не используй предположительные диагнозы.
-        - Ответ должен быть СТРОГО валидным JSON в соответствии со схемой.
-        - Никакого текста вне JSON.
-        - Используй данные из контекста, чтобы заполнить "sources" и "hint_for_doctor".
-
-        Выводи JSON следующего формата:
-        {
-        "priority": "критично срочно | срочно | планово",
-        "reason": "2–3 предложения, почему выбран именно этот приоритет (логика, ключевые факторы, отклонения витальных показателей)",
-        "hint_for_doctor": "Краткие первые шаги, которые врач должен выполнить (например: снять ЭКГ, кислород, анализы и т.п.)",
-        "profile": "therapy | cardio | pulmonology | neurology | obstetric | pediatry",
-        "red_flags": ["краткие пункты ключевых 'красных флагов'"],
-        "sources": [
-            {"id": "doc_cardio_01", "section": "1", "version_date": "2025-05-12"}
-        ],
-        "confidence": 0.0–1.0
-        }
-
-        Пример 1 (критично срочно):
-        ВХОД:
-        боль за грудиной 20 мин, пот; анамнез ИБС; ЧСС 110, АД 180/110, SpO2 92%.
-        ВЫХОД:
-        {
-        "priority": "критично срочно",
-        "reason": "Остро начавшаяся боль за грудиной у пациента с ИБС и снижением SpO₂ до 92% указывает на риск острого коронарного синдрома. Высокое давление и тахикардия усиливают угрозу осложнений.",
-        "hint_for_doctor": "Снять ЭКГ в первые 10 мин, обеспечить кислород при SpO₂ <94%, назначить ASA и нитраты по протоколу, взять тропонин, вызвать кардиолога.",
-        "profile": "therapy",
-        "red_flags": ["боль за грудиной >10 мин", "SpO₂ <94%", "АД ≥180/110"],
-        "sources": [
-            {"id": "doc_cardio_01", "section": "1", "version_date": "2025-05-12"}
-        ],
-        "confidence": 0.9
-        }
-
-        Пример 2 (срочно):
-        ВХОД:
-        лихорадка 38.8, кашель 3 дня; анамнез ХОБЛ; ЧСС 96, АД 130/80, SpO2 95%.
-        ВЫХОД:
-        {
-        "priority": "срочно",
-        "reason": "Повышенная температура и кашель у пациента с ХОБЛ повышают риск дыхательной декомпенсации, хотя SpO₂ пока стабильна. Осмотр необходим в ближайшее время.",
-        "hint_for_doctor": "Оценить дыхание, сатурацию, провести аускультацию, рассмотреть антибиотики при подозрении на обострение ХОБЛ.",
-        "profile": "therapy",
-        "red_flags": ["t° >38.5", "анамнез ХОБЛ"],
-        "sources": [
-            {"id": "doc_resp_02", "section": "2", "version_date": "2024-11-01"}
-        ],
-        "confidence": 0.78
-        }
-
-        Пример 3 (планово):
-        ВХОД:
-        тупая боль в пояснице 2 недели без иррадиации; травм не было; витальные в норме.
-        ВЫХОД:
-        {
-        "priority": "планово",
-        "reason": "Нет признаков неотложности: длительная стабильная боль без неврологических симптомов и с нормальными витальными параметрами.",
-        "hint_for_doctor": "Рекомендовать плановый приём, анализ мочи, при необходимости направление на МРТ или физиотерапию.",
-        "profile": "therapy",
-        "red_flags": [],
-        "sources": [
-            {"id": "doc_backpain_03", "section": "1", "version_date": "2025-02-10"}
-        ],
-        "confidence": 0.72
-        }
-
-        ПОЛЬЗОВАТЕЛЬ:
-        ВХОД:
-        {
-        "complaint": "Сильная давящая боль за грудиной 20 минут, холодный пот.",
-        "history": "Мужчина 58 лет, гипертония, курение 30 лет.",
-        "vitals": { "hr": 104, "bp_syst": 170, "bp_diast": 100, "spo2": 93, "temp": 36.7 }
-        }
-"""
-    )
+async def triage(request: Request):
+    try:
+        try:
+            js = await request.json()
+        except Exception:
+            raw = (await request.body()) or b"{}"
+            js = json.loads(raw.decode("utf-8", "ignore") or "{}")
+        # Если пришла JSON-строка вида "{...}", распарсим ещё раз в dict
+        if isinstance(js, str):
+            try:
+                js = json.loads(js)
+            except Exception:
+                pass
+        if js is None:
+            js = {}
+        payload = TriageInput(**js)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Bad payload: {e}")
 
     norm_v = normalize_vitals(payload.vitals)
+
+    system_msg = """
+СИСТЕМА:
+Ты — медицинский ассистент по триажу в приёмном отделении. 
+Твоя задача — по жалобам, анамнезу и витальным показателям классифицировать приоритет осмотра пациента.
+
+Приоритеты:
+- "критично срочно" — немедленный осмотр, угроза жизни;
+- "срочно" — осмотр в ближайшее время, есть риски ухудшения;
+- "планово" — может подождать, нет признаков неотложности.
+
+Правила:
+- Учитывай жалобы, анамнез, витальные показатели.
+- Если какие-то витальные не указаны, НЕ повышай приоритет только из-за их отсутствия.
+  Отсутствие данных — это не красный флаг. Понижай "confidence" и добавляй в "hint_for_doctor" просьбу дозаснять показатели.
+- Не ставь диагнозов.
+- Ответ только валидный JSON по схеме.
+"""
 
     user_msg = (
         "INPUT:\n"
         f"complaint: {payload.complaint}\n"
         f"history: {payload.history}\n"
-        f"vitals: {vitals_to_text(norm_v)}\n"
-        "\n"
-        "ОТВЕТИ В JSON (без лишнего текста), пример структуры:\n"
+        f"vitals: {vitals_to_text(norm_v)}\n\n"
+        "ОТВЕТИ В JSON (без лишнего текста), структура:\n"
         "{\n"
-        '  "priority": "критично срочно",\n'
+        '  "priority": "критично срочно|срочно|планово",\n'
         '  "reason": "…",\n'
         '  "hint_for_doctor": "…",\n'
-        '  "profile": "therapy",\n'
-        '  "confidence": 0.85,\n'
-        '  "red_flags": ["…","…"],\n'
-        '  "sources": [ { "id": "doc_cardio_01", "section": "1", "version_date": "2025-05-12" } ]\n'
+        '  "profile": "therapy|cardio|pulmonology|neurology|obstetric|pediatry",\n'
+        '  "confidence": 0.0,\n'
+        '  "red_flags": ["…"],\n'
+        '  "sources": [{"id":"doc_cardio_01","section":"1","version_date":"2025-05-12"}]\n'
         "}\n"
         "Если не уверена — понижай confidence, но JSON-схему не нарушай."
     )
-
 
     messages = [
         {"role": "system", "text": system_msg},
@@ -358,16 +330,16 @@ async def triage(payload: TriageInput):
         res = r.json()
         text = res["result"]["alternatives"][0]["message"]["text"]
 
-        import json
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:
-            import re
             m = re.search(r"\{.*\}", text, flags=re.S)
             if not m:
                 raise HTTPException(status_code=500, detail={"parse_error": text})
             parsed = json.loads(m.group(0))
-        parsed = sanitize_model_json(parsed)
+
+        parsed = coerce_model_output(parsed)
+
         return TriageOutput(**parsed)
     except HTTPException:
         raise
@@ -376,10 +348,8 @@ async def triage(payload: TriageInput):
 
 @app.post("/yandex/prompt")
 async def yandex_prompt(p: PromptProxy):
-    if p.messages:
-        messages = p.messages
-    else:
-        messages = []
+    messages = p.messages or []
+    if not messages:
         if p.system:
             messages.append({"role": "system", "text": p.system})
         messages.append({"role": "user", "text": p.user})
@@ -401,4 +371,3 @@ async def yandex_prompt(p: PromptProxy):
         return {"text": text, "usage": res["result"].get("usage"), "modelVersion": res["result"].get("modelVersion")}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    

@@ -2,9 +2,14 @@ import React, { useState } from 'react';
 import { SectionCard } from '../common/SectionCard.jsx';
 import { inferProfile } from '../../utils/medicalUtils.js';
 import { triageEngine } from '../../utils/triageEngine.js';
-import { nowISO, PRIORITY } from '../../utils/constants.js';
+import { nowISO, PRIORITY, defaultHint } from '../../utils/constants.js';
 
-const API_BASE = "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
+const safeDefaultHint = (pkey) =>
+  (typeof defaultHint === 'function' ? defaultHint(pkey) : 'Рекомендации будут уточнены при осмотре.');
+
+const API_BASE = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE)
+  ? import.meta.env.VITE_API_BASE
+  : "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
 
 function adaptServerTriageToUI(server) {
   const map = {
@@ -31,7 +36,6 @@ function adaptServerTriageToUI(server) {
 async function postTriage(payload) {
   const res = await fetch(`${API_BASE}/triage`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -59,15 +63,19 @@ export function IntakeForm({ onAddPatient }) {
 
     const vitals = {
       bp: bp || undefined,
-      hr: hr ? Number(hr) : undefined,
-      spo2: spo2 ? Number(spo2) : undefined,
-      temp: temp ? Number(temp) : undefined,
-      rr: rr ? Number(rr) : undefined,
-      gcs: gcs ? Number(gcs) : undefined,
+      hr: hr ? String(hr) : undefined,
+      spo2: spo2 ? String(spo2) : undefined,
+      temp: temp ? String(temp) : undefined,
+      rr: rr ? String(rr) : undefined,
+      gcs: gcs ? String(gcs) : undefined,
     };
 
     const base = {
-      id: `ID-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      // id: `ID-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+      // createdAt: nowISO(),
+      id: (globalThis.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `ID-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
       createdAt: nowISO(),
       complaint: complaint.trim(),
       history: history.trim(),
@@ -75,11 +83,10 @@ export function IntakeForm({ onAddPatient }) {
     };
 
     try {
-      const serverOut = await postTriage({
-        complaint: base.complaint,
-        history: base.history,
-        vitals: base.vitals,
-      });
+      const payload = hasVitals
+        ? { complaint: base.complaint, history: base.history, vitals: base.vitals }
+        : { complaint: base.complaint, history: base.history };
+      const serverOut = await postTriage(payload);
 
       const triage = adaptServerTriageToUI(serverOut);
       const profile = (serverOut.profile || "therapy").toLowerCase();
@@ -108,7 +115,6 @@ export function IntakeForm({ onAddPatient }) {
         <div className="mb-2">
           <h2 className="text-lg font-semibold text-slate-800">Новый пациент (ввод данных)</h2>
         </div>
-        
         <form onSubmit={handleSubmit} className="space-y-2">
           <div>
             <h3 className="text-sm font-semibold text-slate-700 mb-1">Жалобы</h3>

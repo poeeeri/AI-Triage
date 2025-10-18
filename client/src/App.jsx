@@ -8,8 +8,13 @@ import { seedPatients } from './data/seedData.js';
 import { triageEngine } from './utils/triageEngine.js';
 import { nowISO, PRIORITY, defaultHint } from './utils/constants.js';
 
+const safeDefaultHint = (pkey) =>
+  (typeof defaultHint === 'function' ? defaultHint(pkey) : 'Рекомендации будут уточнены при осмотре.');
+
 export default function App() {
-    const API = "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
+    const API = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE)
+      ? import.meta.env.VITE_API_BASE
+      : "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
 
     function adaptServerTriageToUI(server) {
       const PRIORITY_MAP = {
@@ -19,7 +24,7 @@ export default function App() {
       };
       const code = PRIORITY_MAP[server.priority] || "PLAN";
       const p = PRIORITY[code];
-      const hint = (server.hint_for_doctor || "").trim() || defaultHint(p.key);
+      const hint = (server.hint_for_doctor || "").trim() || safeDefaultHint(p.key);
 
       return {
         priorityKey: p.key,
@@ -118,6 +123,7 @@ export default function App() {
       }
     }
 
+
     function handleChangeProfile(patientId, newProfile) {
       setPatients(prev =>
         prev.map(patient =>
@@ -140,7 +146,6 @@ export default function App() {
           profileFilter={profileFilter} 
           onProfileFilterChange={setProfileFilter} 
         />
-
         <main className="max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
           <IntakeForm onAddPatient={handleAddPatient} />
           <PatientQueue 
