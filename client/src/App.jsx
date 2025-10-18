@@ -68,11 +68,39 @@ export default function App() {
       const patientToRetriage = updatedPatientData || selectedPatient;
       if (!patientToRetriage) return;
 
-      const payload = {
-        complaint: patientToRetriage.complaint,
-        history: patientToRetriage.history,
-        vitals: patientToRetriage.vitals,
+      const strNum = (v) => {
+        if (v === null || v === undefined) return undefined;
+        const s = String(v).trim().replace(",", ".");
+        if (s === "") return undefined;
+        const n = Number(s);
+        return Number.isFinite(n) ? String(n) : undefined;
       };
+      const cleanBp = (() => {
+        const raw = patientToRetriage?.vitals?.bp ?? "";
+        const s = String(raw).trim();
+        return /^(\d{2,3})\s*([\/\-])\s*(\d{2,3})$/.test(s) ? s : undefined;
+      })();
+      const sanitizedVitals = patientToRetriage?.vitals
+        ? {
+            bp: cleanBp,
+            hr: strNum(patientToRetriage.vitals.hr),
+            spo2: strNum(patientToRetriage.vitals.spo2),
+            temp: strNum(patientToRetriage.vitals.temp),
+            rr: strNum(patientToRetriage.vitals.rr),
+            gcs: strNum(patientToRetriage.vitals.gcs),
+          }
+        : undefined;
+      const hasVitals = sanitizedVitals && Object.values(sanitizedVitals).some(v => v !== undefined && v !== null);
+      const payload = hasVitals
+        ? {
+            complaint: patientToRetriage.complaint,
+            history: patientToRetriage.history,
+            vitals: sanitizedVitals,
+          }
+        : {
+            complaint: patientToRetriage.complaint,
+            history: patientToRetriage.history,
+          };
 
       try {
         const res = await fetch(`${API}/triage`, {
@@ -135,7 +163,7 @@ export default function App() {
     }
 
     function handleMarkAsSeen() {
-       if (!selectedPatient) return;
+        if (!selectedPatient) return;
       setPatients((prev) => prev.filter(x => x.id !== selectedPatient.id));
       setSelectedPatient(null);
     }

@@ -36,6 +36,7 @@ function adaptServerTriageToUI(server) {
 async function postTriage(payload) {
   const res = await fetch(`${API_BASE}/triage`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -61,18 +62,29 @@ export function IntakeForm({ onAddPatient }) {
     if (isSending) return;
     setIsSending(true);
 
-    const vitals = {
-      bp: bp || undefined,
-      hr: hr ? String(hr) : undefined,
-      spo2: spo2 ? String(spo2) : undefined,
-      temp: temp ? String(temp) : undefined,
-      rr: rr ? String(rr) : undefined,
-      gcs: gcs ? String(gcs) : undefined,
+    const strNum = (v) => {
+      if (v === null || v === undefined) return undefined;
+      const s = String(v).trim().replace(",", ".");
+      if (s === "") return undefined;
+      const n = Number(s);
+      return Number.isFinite(n) ? String(n) : undefined;
     };
+    const cleanBp = (() => {
+      const s = String(bp || "").trim();
+      return /^(\d{2,3})\s*([\/\-])\s*(\d{2,3})$/.test(s) ? s : undefined;
+    })();
+
+    const vitals = {
+      bp: cleanBp,
+      hr: strNum(hr),
+      spo2: strNum(spo2),
+      temp: strNum(temp),
+      rr: strNum(rr),
+      gcs: strNum(gcs),
+    };
+    const hasVitals = Object.values(vitals).some((v) => v !== undefined && v !== null);
 
     const base = {
-      // id: `ID-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
-      // createdAt: nowISO(),
       id: (globalThis.crypto && crypto.randomUUID)
         ? crypto.randomUUID()
         : `ID-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
@@ -84,7 +96,7 @@ export function IntakeForm({ onAddPatient }) {
 
     try {
       const payload = hasVitals
-        ? { complaint: base.complaint, history: base.history, vitals: base.vitals }
+        ? { complaint: base.complaint, history: base.history, vitals }
         : { complaint: base.complaint, history: base.history };
       const serverOut = await postTriage(payload);
 
