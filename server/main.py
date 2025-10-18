@@ -266,6 +266,14 @@ async def triage(request: Request):
         except Exception:
             raw = (await request.body()) or b"{}"
             js = json.loads(raw.decode("utf-8", "ignore") or "{}")
+        # Если пришла JSON-строка вида "{...}", распарсим ещё раз в dict
+        if isinstance(js, str):
+            try:
+                js = json.loads(js)
+            except Exception:
+                pass
+        if js is None:
+            js = {}
         payload = TriageInput(**js)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Bad payload: {e}")
