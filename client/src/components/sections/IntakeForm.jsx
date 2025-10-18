@@ -103,15 +103,15 @@ export function IntakeForm({ onAddPatient }) {
   }
 
   return (
-    <div className="lg:col-span-1 sticky top-20 self-start max-h-[80vh] overflow-y-auto">
+    <div className="lg:col-span-1 sticky top-20 self-start">
       <SectionCard>
-        <div className="mb-4">
+        <div className="mb-2">
           <h2 className="text-lg font-semibold text-slate-800">Новый пациент (ввод данных)</h2>
         </div>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-2">
           <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">Жалобы</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-1">Жалобы</h3>
             <textarea
               value={complaint}
               onChange={(e) => setComplaint(e.target.value)}
@@ -122,18 +122,18 @@ export function IntakeForm({ onAddPatient }) {
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">Анамнез</h3>
+            <h3 className="text-sm font-semibold text-slate-700 mb-1">Анамнез</h3>
             <textarea
               value={history}
               onChange={(e) => setHistory(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              rows="2"
+              rows="1"
             />
           </div>
 
           <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-2">Показатели</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <h3 className="text-sm font-semibold text-slate-700 mb-1">Показатели</h3>
+            <div className="grid grid-cols-2 gap-2">
               <input className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="АД (напр. 120/80)" value={bp} onChange={(e)=>setBp(e.target.value)} />
               <input className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="ЧСС" type="number" value={hr} onChange={(e)=>setHr(e.target.value)} />
               <input className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="SpO₂ %" type="number" value={spo2} onChange={(e)=>setSpo2(e.target.value)} />
@@ -143,7 +143,7 @@ export function IntakeForm({ onAddPatient }) {
             </div>
           </div>
 
-          <div className="pt-2">
+          <div>
             <button
               type="submit"
               disabled={isSending}
@@ -151,7 +151,7 @@ export function IntakeForm({ onAddPatient }) {
             >
               {isSending ? "Добавляем..." : "Добавить в очередь"}
             </button>
-            <div className="mt-2 text-center">
+            <div className="mt-1 text-center">
               <span className="text-xs text-slate-500">AI-оценка приоритета выполняется автоматически</span>
             </div>
           </div>
