@@ -20,12 +20,29 @@ YANDEX_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 
 app = FastAPI(title="AI-Triage MVP (FastAPI + YandexGPT)")
 
-# Явные ответы для preflight CORS (OPTIONS), чтобы прокси/ингресс не ломали его
+@app.middleware("http")
+async def _security_and_preflight(request: Request, call_next):
+    if request.method == "OPTIONS":
+        origin = request.headers.get("origin") or "*"
+        req_headers = request.headers.get("access-control-request-headers") or "*"
+        resp = Response(status_code=200)
+        resp.headers["Access-Control-Allow-Origin"] = "*" if origin else "*"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = req_headers
+        resp.headers["Access-Control-Max-Age"] = "600"
+        resp.headers["Vary"] = "Origin"
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        return resp
+
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers.setdefault("Access-Control-Allow-Origin", "*")
+    return response
+
 @app.options("/{any_path:path}")
 def _cors_preflight_catch_all(any_path: str):
     return Response(status_code=204)
 
-# CORS: максимально широкий, чтобы префлайты не падали на ингресте/прокси
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],     # публичный API без куки — ок
