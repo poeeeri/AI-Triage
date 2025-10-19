@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import httpx
 from fastapi.responses import Response
+from datetime import datetime
 
 load_dotenv()
 
@@ -33,6 +34,22 @@ app.add_middleware(
     allow_credentials=False, 
     max_age=600,
 )
+
+# --- Database wiring (optional but recommended) ---
+try:
+    from db import Base, engine, SessionLocal
+    from models import TriageLog
+
+    @app.on_event("startup")
+    async def _maybe_create_tables():
+        # Enable AUTO_CREATE_DB=1 in env for simple bootstrapping (dev only).
+        if os.getenv("AUTO_CREATE_DB", "0") == "1":
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+except Exception:
+    # DB is optional; app should still run without it
+    engine = None
+    SessionLocal = None
 
 AllowedProfile = Literal["therapy", "cardio", "pulmonology", "neurology", "obstetric", "pediatry"]
 
@@ -326,7 +343,29 @@ async def triage(request: Request):
 
         parsed = coerce_model_output(parsed)
 
-        return TriageOutput(**parsed)
+        result = TriageOutput(**parsed)
+
+        # Persist triage entry if DB configured
+        try:
+            if SessionLocal is not None:
+                async with SessionLocal() as session:
+                    log = TriageLog(
+                        created_at=datetime.utcnow(),
+                        complaint=payload.complaint,
+                        history=payload.history or "",
+                        vitals_json=norm_v,
+                        output_json=result.model_dump(),
+                        priority=result.priority,
+                        profile=result.profile,
+                        confidence=result.confidence,
+                    )
+                    session.add(log)
+                    await session.commit()
+        except Exception:
+            # Do not fail the request if DB write fails
+            pass
+
+        return result
     except HTTPException:
         raise
     except Exception as e:

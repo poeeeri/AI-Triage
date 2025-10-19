@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Header } from './components/layout/Header.jsx';
 import { Footer } from './components/layout/Footer.jsx';
 import { IntakeForm } from './components/sections/IntakeForm.jsx';
@@ -39,8 +39,29 @@ export default function App() {
       };
     }
 
-    const [profileFilter, setProfileFilter] = useState("all");
-    const [patients, setPatients] = useState(seedPatients);
+    const LS_PATIENTS = 'ai-triage/patients/v1';
+    const LS_PROFILE = 'ai-triage/profileFilter/v1';
+
+    const [profileFilter, setProfileFilter] = useState(() => {
+      try {
+        return localStorage.getItem(LS_PROFILE) || 'all';
+      } catch { return 'all'; }
+    });
+
+    const [patients, setPatients] = useState(() => {
+      try {
+        const raw = localStorage.getItem(LS_PATIENTS);
+        return raw ? JSON.parse(raw) : seedPatients;
+      } catch { return seedPatients; }
+    });
+
+    useEffect(() => {
+      try { localStorage.setItem(LS_PATIENTS, JSON.stringify(patients)); } catch {}
+    }, [patients]);
+
+    useEffect(() => {
+      try { localStorage.setItem(LS_PROFILE, profileFilter); } catch {}
+    }, [profileFilter]);
     const [selectedPatient, setSelectedPatient] = useState(null);
 
     const filteredPatients = useMemo(() => {
