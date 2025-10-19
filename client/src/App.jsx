@@ -14,7 +14,8 @@ const safeDefaultHint = (pkey) =>
 export default function App() {
     const API = (import.meta && import.meta.env && import.meta.env.VITE_API_BASE)
       ? import.meta.env.VITE_API_BASE
-      : "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
+      : "https://d5d8seb6djqlde81sebl.o2p3jdjj.apigw.yandexcloud.net";
+      // : "https://bba9fmdqtv4tneakojp3.containers.yandexcloud.net";
 
     function adaptServerTriageToUI(server) {
       const PRIORITY_MAP = {

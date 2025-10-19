@@ -20,35 +20,17 @@ YANDEX_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 
 app = FastAPI(title="AI-Triage MVP (FastAPI + YandexGPT)")
 
-@app.middleware("http")
-async def _security_and_preflight(request: Request, call_next):
-    if request.method == "OPTIONS":
-        origin = request.headers.get("origin") or "*"
-        req_headers = request.headers.get("access-control-request-headers") or "*"
-        resp = Response(status_code=200)
-        resp.headers["Access-Control-Allow-Origin"] = "*" if origin else "*"
-        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = req_headers
-        resp.headers["Access-Control-Max-Age"] = "600"
-        resp.headers["Vary"] = "Origin"
-        resp.headers["X-Content-Type-Options"] = "nosniff"
-        return resp
-
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers.setdefault("Access-Control-Allow-Origin", "*")
-    return response
-
-@app.options("/{any_path:path}")
-def _cors_preflight_catch_all(any_path: str):
-    return Response(status_code=204)
+ALLOWED_ORIGINS = [
+    "https://poeeeri.github.io",
+    "http://localhost:5173",
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],     # публичный API без куки — ок
-    allow_methods=["*"],     # GET/POST/OPTIONS и т.д.
-    allow_headers=["*"],     # content-type и любые другие
-    allow_credentials=False, # с "*" креды всё равно нельзя
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET","POST","OPTIONS"],
+    allow_headers=["Content-Type","Authorization","Accept"],
+    allow_credentials=False, 
     max_age=600,
 )
 
@@ -175,8 +157,7 @@ def _norm_strip_lower(x: Any) -> str:
     if x is None:
         return ""
     s = str(x).strip().lower()
-    # частая путаница латиницы/кириллицы: 'o' vs 'о'
-    s = s.replace("o", "о")  # латинская 'o' -> кириллическая
+    s = s.replace("o", "о")
     return s
 
 _ALLOWED_PRIOR = ("критично срочно", "срочно", "планово")
@@ -185,25 +166,21 @@ def normalize_priority(val: Any) -> str:
     s = _norm_strip_lower(val)
     if s in _ALLOWED_PRIOR:
         return s
-    # синонимы/опечатки
     if s in {"критично", "немедленно", "экстренно", "неотложно", "critical", "stat", "emergent"}:
         return "критично срочно"
     if s in {"срочно", "urgent", "soon", "как можно скорее"}:
         return "срочно"
     if s in {"план", "плановый", "планово", "плановo", "plan", "planned", "non-urgent", "plano", "planov", "planovo"}:
         return "планово"
-    # эвристика по первым буквам
     if s.startswith("крит"): return "критично срочно"
     if s.startswith("сроч"): return "срочно"
     if s.startswith("план"): return "планово"
-    # безопасный дефолт — середина шкалы
     return "срочно"
 
 _ALLOWED_PROFILES = {"therapy", "cardio", "pulmonology", "neurology", "obstetric", "pediatry"}
 
 def normalize_profile(val: Any) -> str:
     s = _norm_strip_lower(val)
-    # допускаем англ./рус. названия и опечатки
     aliases = {
         "терапия": "therapy", "therap": "therapy", "general": "therapy",
         "кардио": "cardio", "cardiology": "cardio",
@@ -216,7 +193,6 @@ def normalize_profile(val: Any) -> str:
         return s
     if s in aliases:
         return aliases[s]
-    # эвристики по префиксам
     for k, v in aliases.items():
         if s.startswith(k):
             return v
@@ -224,17 +200,13 @@ def normalize_profile(val: Any) -> str:
 
 def coerce_model_output(obj: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(obj or {})
-    # priority
     out["priority"] = normalize_priority(out.get("priority"))
-    # profile
     out["profile"] = normalize_profile(out.get("profile"))
-    # confidence -> [0,1], дефолт пониженный при сомнениях
     try:
         c = float(out.get("confidence", 0.7))
     except Exception:
         c = 0.7
     out["confidence"] = max(0.0, min(1.0, c))
-    # red_flags -> список строк
     rf = out.get("red_flags", [])
     if isinstance(rf, (str, int, float)):
         rf = [str(rf)]
@@ -243,11 +215,9 @@ def coerce_model_output(obj: Dict[str, Any]) -> Dict[str, Any]:
     else:
         rf = []
     out["red_flags"] = rf
-    # hint_for_doctor / reason — строки
     for k in ("hint_for_doctor", "reason"):
         v = out.get(k)
         out[k] = "" if v is None else str(v)
-    # sources — список объектов (мягкая нормализация)
     src = out.get("sources")
     if src is None:
         out["sources"] = []
@@ -283,7 +253,6 @@ async def triage(request: Request):
         except Exception:
             raw = (await request.body()) or b"{}"
             js = json.loads(raw.decode("utf-8", "ignore") or "{}")
-        # Если пришла JSON-строка вида "{...}", распарсим ещё раз в dict
         if isinstance(js, str):
             try:
                 js = json.loads(js)
